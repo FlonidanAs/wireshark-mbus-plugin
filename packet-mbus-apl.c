@@ -10,12 +10,12 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
-#include "config.h"
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include <epan/proto_data.h>
 #include <wsutil/time_util.h>
 #include "packet-mbus-common.h"
+#include "math.h"
 
 #define PROTO_DATA_KEY_MBUS_PACKET_INFO 0
 
