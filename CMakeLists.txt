@@ -16,30 +16,26 @@ include(WiresharkPlugin)
 set_module_info(mbus 0 0 1 0)
 
 set(DISSECTOR_SRC
-	packet-mbus-common.c
-	packet-mbus.c
-	packet-mbus-ell.c
 	packet-mbus-afl.c
-	packet-mbus-tpl.c
 	packet-mbus-apl.c
+	packet-mbus-common.c
+	packet-mbus-dlms-cosem.c
 	packet-mbus-dsmr6.c
-)
-
-set(DISSECTOR_SUPPORT_SRC
+	packet-mbus-ell.c
 	packet-mbus-security.c
-	packet-wmbus.c
+	packet-mbus-tpl.c
+	packet-mbus.c
 	packet-wmbus-module.c
+	packet-wmbus.c
 )
 
 set(PLUGIN_FILES
 	plugin.c
 	${DISSECTOR_SRC}
-	${DISSECTOR_SUPPORT_SRC}
 )
 
 set_source_files_properties(
 	${DISSECTOR_SRC}
-	${DISSECTOR_SUPPORT_SRC}
 	PROPERTIES
 	COMPILE_FLAGS "${WERROR_COMMON_FLAGS}"
 )
@@ -47,7 +43,6 @@ set_source_files_properties(
 register_plugin_files(plugin.c
 	plugin
 	${DISSECTOR_SRC}
-	${DISSECTOR_SUPPORT_SRC}
 )
 
 add_wireshark_plugin_library(mbus epan)
@@ -65,7 +60,6 @@ CHECKAPI(
 	  --group dissectors-restricted
 	SOURCES
 	  ${DISSECTOR_SRC}
-	  ${DISSECTOR_SUPPORT_SRC}
 	  ${DISSECTOR_HEADERS}
 )
 

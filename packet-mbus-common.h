@@ -20,6 +20,7 @@
 #define MBUS_PROTOABBREV_AFL "mbus_afl"
 #define MBUS_PROTOABBREV_TPL "mbus_tpl"
 #define MBUS_PROTOABBREV_APL "mbus_apl"
+#define MBUS_PROTOABBREV_DLMS "mbus_dlms"
 
 typedef struct {
     uint8_t cfield;
@@ -40,7 +41,8 @@ typedef struct {
 
 /* MBus CI Fields*/
 #define mbus_ci_field_names_VALUE_STRING_LIST(XXX) \
-    /*(ReservedForDLMSBasedApplications, 0x00-0x1F, "Reserved for DLMS-based applications") */ \
+    XXX(DLMSBasedApplicationMinimumAllowed,             0x00, "DLMS-based application minimum allowed") \
+    XXX(DLMSBasedApplicationMaximumAllowed,             0x1F, "DLMS-based application maximum allowed") \
     /*(Reserved, 0x20-0x4F, "Reserved") */ \
     XXX(ApplicationResetOrSelectToDeviceNoHeader,       0x50, "Application Reset Or Select to Device") \
     XXX(DataSend,                                       0x51, "Data Send") \
@@ -117,6 +119,7 @@ typedef struct {
 VALUE_STRING_ENUM(mbus_ci_field_names);
 extern value_string_ext mbus_ci_field_names_ext;
 
+bool mbus_is_dlms_ci_field(uint8_t ciField);
 bool mbus_is_ell_ci_field(uint8_t ciField);
 bool mbus_is_afl_ci_field(uint8_t ciField);
 bool mbus_is_image_transfer_ci_field(uint8_t ciField);

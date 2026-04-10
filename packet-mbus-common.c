@@ -14,6 +14,12 @@
 VALUE_STRING_ARRAY(mbus_ci_field_names);
 value_string_ext mbus_ci_field_names_ext = VALUE_STRING_EXT_INIT(mbus_ci_field_names);
 
+bool mbus_is_dlms_ci_field(uint8_t ciField)
+{
+    return (ciField >= DLMSBasedApplicationMinimumAllowed) &&
+           (ciField <= DLMSBasedApplicationMaximumAllowed);
+}
+
 bool mbus_is_ell_ci_field(uint8_t ciField)
 {
     return (ciField == ExtendedLinkLayer1) ||

@@ -107,11 +107,15 @@ void proto_reg_handoff_mbus_tpl(void);
 /* Dissector Handles. */
 static dissector_handle_t mbus_tpl_handle;
 static dissector_handle_t mbus_apl_handle;
+static dissector_handle_t mbus_dlms_cosem_handle;
 
 /* Initialize the protocol and registered fields */
 static int proto_mbus_tpl;
 
 static int hf_mbus_cifield;
+static int hf_mbus_cifield_dlms;
+static int hf_mbus_cifield_dlms_fin;
+static int hf_mbus_cifield_dlms_frag_count;
 static int hf_mbus_access_counter;
 static int hf_mbus_status;
 static int hf_mbus_config;
@@ -124,6 +128,14 @@ static int hf_mbus_device_type;
 
 /* Initialize the subtree pointers */
 static int ett_mbus_tpl;
+static int ett_mbus_cifield_dlms;
+
+/* dlms ci field flags */
+static int* const cifield_dlms_flags[] = {
+    &hf_mbus_cifield_dlms_fin,
+    &hf_mbus_cifield_dlms_frag_count,
+    NULL
+};
 
 static void dissect_mbus_common_layers(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, mbus_packet_info_t* mbus_info)
 {
@@ -142,8 +154,19 @@ static void dissect_mbus_common_layers(tvbuff_t *tvb, packet_info *pinfo, proto_
 
     /* CIField */
     mbus_packet_info.ciField = tvb_get_uint8(tvb, offset);
-    proto_tree_add_item(transport_layer_tree, hf_mbus_cifield, tvb, offset, 1, ENC_NA);
-    offset += 1;
+    if (mbus_is_dlms_ci_field(mbus_packet_info.ciField)) {
+        proto_tree_add_bitmask(transport_layer_tree, tvb, offset, hf_mbus_cifield_dlms, ett_mbus_cifield_dlms, cifield_dlms_flags, ENC_LITTLE_ENDIAN);
+        offset += 1;
+        tvbuff_t* payload_tvb = tvb_new_subset_remaining(tvb, offset);
+        if (tvb_reported_length(payload_tvb) > 0) {
+            call_dissector(mbus_dlms_cosem_handle, payload_tvb, pinfo, proto_tree_get_root(tree));
+        }
+        return;
+    }
+    else {
+        proto_tree_add_item(transport_layer_tree, hf_mbus_cifield, tvb, offset, 1, ENC_NA);
+        offset += 1;
+    }
 
     for (size_t i = 0; i < array_length(ci_field_tpl_header); i++) {
         if (ci_field_tpl_header[i].cifield == mbus_packet_info.ciField) {
@@ -262,6 +285,15 @@ void proto_register_mbus_tpl(void)
         { &hf_mbus_cifield,
             { "CIField", "mbus.tpl.cifield", FT_UINT8, BASE_HEX | BASE_EXT_STRING, &mbus_ci_field_names_ext,
               0x00, NULL, HFILL } },
+        { &hf_mbus_cifield_dlms,
+            { "CIField DLMS", "mbus.tpl.cifield_dlms", FT_UINT8, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_mbus_cifield_dlms_fin,
+            { "Final", "mbus.tpl.cifield_dlms.fin", FT_BOOLEAN, 8, NULL,
+              0x10, NULL, HFILL } },
+        { &hf_mbus_cifield_dlms_frag_count,
+            { "Fragment Count", "mbus.tpl.cifield_dlms.frag_count", FT_UINT8, BASE_DEC, NULL,
+              0x0F, NULL, HFILL } },
 
         { &hf_mbus_access_counter,
             { "Access Counter", "mbus.tpl.access_counter", FT_UINT8, BASE_HEX, NULL,
@@ -302,7 +334,8 @@ void proto_register_mbus_tpl(void)
 
     /* MBus subtrees */
     int *ett[] = {
-        &ett_mbus_tpl
+        &ett_mbus_tpl,
+        &ett_mbus_cifield_dlms
     };
 
     proto_mbus_tpl = proto_register_protocol("MBus TPL", "MBus TPL", MBUS_PROTOABBREV_TPL);
@@ -320,6 +353,7 @@ void
 proto_reg_handoff_mbus_tpl(void)
 {
     mbus_apl_handle = find_dissector_add_dependency(MBUS_PROTOABBREV_APL, proto_mbus_tpl);
+    mbus_dlms_cosem_handle = find_dissector_add_dependency(MBUS_PROTOABBREV_DLMS, proto_mbus_tpl);
 }
 
 /*
