@@ -10,10 +10,30 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 #
 
-include(WiresharkPlugin)
+cmake_minimum_required(VERSION 4.2)
 
-# Plugin name and version info (major minor micro extra)
-set_module_info(mbus 0 0 1 0)
+project(WirelessMBUSPlugin)
+
+find_package(Wireshark CONFIG REQUIRED)
+
+find_package(PkgConfig)
+
+pkg_check_modules(GpgError REQUIRED
+		gpg-error)
+
+pkg_check_modules(Gcrypt REQUIRED
+		libgcrypt
+)
+
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+	set(CMAKE_INSTALL_PREFIX "${Wireshark_INSTALL_PREFIX}"
+			CACHE PATH "Installation prefix" FORCE
+	)
+endif()
+
+if(NOT Wireshark_PLUGINS_ENABLED)
+	message(WARNING "Wireshark was compiled without support for plugins")
+endif()
 
 set(DISSECTOR_SRC
 	packet-mbus-afl.c
@@ -29,38 +49,46 @@ set(DISSECTOR_SRC
 	packet-wmbus.c
 )
 
-set(PLUGIN_FILES
-	plugin.c
-	${DISSECTOR_SRC}
-)
-
 set_source_files_properties(
 	${DISSECTOR_SRC}
 	PROPERTIES
 	COMPILE_FLAGS "${WERROR_COMMON_FLAGS}"
 )
 
-register_plugin_files(plugin.c
-	plugin
-	${DISSECTOR_SRC}
+
+add_library(mbus MODULE
+		 packet-mbus-plugin.c
+		${DISSECTOR_SRC}
+		${DISSECTOR_SUPPORT_SRC}
 )
 
-add_wireshark_plugin_library(mbus epan)
+target_link_libraries(mbus
+		epan
+		m
+		${Gcrypt_LIBRARIES}
+)
 
-target_link_libraries(mbus epan ${GCRYPT_LIBRARIES})
+target_include_directories(mbus PUBLIC
+		${GpgError_INCLUDE_DIRS}
+)
 
-install_plugin(mbus epan)
+target_link_directories(mbus PRIVATE
+		${Gcrypt_LIBRARY_DIRS}
+)
 
-file(GLOB DISSECTOR_HEADERS RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "*.h")
-CHECKAPI(
-	NAME
-	  mbus
-	SWITCHES
-	  --group dissectors-prohibited
-	  --group dissectors-restricted
-	SOURCES
-	  ${DISSECTOR_SRC}
-	  ${DISSECTOR_HEADERS}
+
+if(APPLE)
+	add_custom_command(TARGET mbus POST_BUILD
+			COMMAND ${CMAKE_COMMAND}
+			-DTARGET_FILE=$<TARGET_FILE:mbus>
+			-P ${CMAKE_CURRENT_SOURCE_DIR}/rewrite_rpath.cmake
+	)
+endif ()
+
+add_custom_command(TARGET mbus POST_BUILD
+		COMMAND cp
+		$<TARGET_FILE:mbus>
+		${CMAKE_CURRENT_BINARY_DIR}/mbus-dissector.so
 )
 
 #
