@@ -33,6 +33,13 @@ bool mbus_is_afl_ci_field(uint8_t ciField)
     return (ciField == AuthenticationFragmentationLayer);
 }
 
+bool mbus_is_compact_frame_ci_field(uint8_t ciField)
+{
+    return (ciField == ResponseFromDeviceCompactFrameNoHeader) ||
+           (ciField == ResponseFromDeviceCompactFrameShortHeader) ||
+           (ciField == ResponseFromDeviceCompactFrameLongHeader);
+}
+
 bool mbus_is_image_transfer_ci_field(uint8_t ciField)
 {
     return (ciField == ImageTransferCommandLongHeader) ||

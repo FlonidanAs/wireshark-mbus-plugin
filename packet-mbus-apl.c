@@ -127,6 +127,9 @@ static int hf_mbus_dif_vif_data_uint48;
 static int hf_mbus_dif_vif_data_uint64;
 static int hf_mbus_time_sync_tc;
 static int hf_mbus_time_sync_date_time;
+static int hf_mbus_compact_frame_format_signature;
+static int hf_mbus_compact_frame_full_frame_crc;
+static int hf_mbus_compact_frame_data;
 static int hf_mbus_ita_segment_length;
 static int hf_mbus_ita_segment_id;
 static int hf_mbus_ita_segment_function_field;
@@ -674,6 +677,20 @@ dissect_mbus_time_sync(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     col_append_sep_str(pinfo->cinfo, COL_INFO, NULL, "Time sync");
 }
 
+static void dissect_mbus_compact_frame(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+{
+    int offset = 0;
+    proto_tree_add_item(tree, hf_mbus_compact_frame_format_signature, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+    offset += 2;
+
+    proto_tree_add_item(tree, hf_mbus_compact_frame_full_frame_crc, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+    offset += 2;
+
+    proto_tree_add_item(tree, hf_mbus_compact_frame_data, tvb, offset, tvb_reported_length_remaining(tvb, offset), ENC_NA);
+
+    col_append_sep_str(pinfo->cinfo, COL_INFO, NULL, "Compact frame");
+}
+
 static void dissect_mbus_image_transfer(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
     int offset = 0;
@@ -748,6 +765,9 @@ static int dissect_mbus_apl_helper(tvbuff_t *tvb, packet_info *pinfo, proto_tree
 
     if (mbus_info->ciField == TimeSyncToDeviceLongHeader_1) {
         dissect_mbus_time_sync(tvb, pinfo, apl_tree);
+    }
+    else if (mbus_is_compact_frame_ci_field(mbus_info->ciField)) {
+        dissect_mbus_compact_frame(tvb, pinfo, apl_tree);
     }
     else if (mbus_is_image_transfer_ci_field(mbus_info->ciField)) {
         dissect_mbus_image_transfer(tvb, pinfo, apl_tree);
@@ -889,6 +909,16 @@ void proto_register_mbus_apl(void)
         { &hf_mbus_time_sync_date_time,
             { "Date Time", "mbus.apl.app_block.time_sync.date_time", FT_ABSOLUTE_TIME, ABSOLUTE_TIME_UTC, NULL,
               0x00, NULL, HFILL} },
+
+        { &hf_mbus_compact_frame_format_signature,
+            { "Format Signature", "mbus.apl.compact_frame.format_signature", FT_UINT16, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_mbus_compact_frame_full_frame_crc,
+            { "Full Frame CRC", "mbus.apl.compact_frame.crc", FT_UINT16, BASE_HEX, NULL,
+              0x00, NULL, HFILL} },
+        { &hf_mbus_compact_frame_data,
+            { "Data", "mbus.apl.compact_frame.data", FT_BYTES, BASE_NONE, NULL,
+              0x00, NULL, HFILL } },
 
         { &hf_mbus_vif_bytes,
             { "VIF", "mbus.apl.app_block.vif_bytes", FT_BYTES, BASE_NONE, NULL,

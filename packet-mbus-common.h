@@ -122,6 +122,7 @@ extern value_string_ext mbus_ci_field_names_ext;
 bool mbus_is_dlms_ci_field(uint8_t ciField);
 bool mbus_is_ell_ci_field(uint8_t ciField);
 bool mbus_is_afl_ci_field(uint8_t ciField);
+bool mbus_is_compact_frame_ci_field(uint8_t ciField);
 bool mbus_is_image_transfer_ci_field(uint8_t ciField);
 bool mbus_is_tls_ci_field(uint8_t ciField);
 
