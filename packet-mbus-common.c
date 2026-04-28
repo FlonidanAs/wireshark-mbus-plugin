@@ -122,12 +122,24 @@ void mbus_set_address_and_port_info(packet_info *pinfo, uint8_t cfield, const ch
     char* src_addr;
     char* dst_addr;
     if (is_msg_from_meter(cfield)) {
-        src_addr = wmem_strdup_printf(pinfo->pool, "%c:%s", 'M', address);
-        dst_addr = wmem_strdup_printf(pinfo->pool, "%c:%s", 'O', address);
+        if (address == NULL) {
+            src_addr = wmem_strdup_printf(pinfo->pool, "%c", 'M');
+            dst_addr = wmem_strdup_printf(pinfo->pool, "%c", 'O');
+        }
+        else {
+            src_addr = wmem_strdup_printf(pinfo->pool, "%c:%s", 'M', address);
+            dst_addr = wmem_strdup_printf(pinfo->pool, "%c:%s", 'O', address);
+        }
     }
     else {
-        src_addr = wmem_strdup_printf(pinfo->pool, "%c:%s", 'O', address);
-        dst_addr = wmem_strdup_printf(pinfo->pool, "%c:%s", 'M', address);
+        if (address == NULL) {
+            src_addr = wmem_strdup_printf(pinfo->pool, "%c", 'O');
+            dst_addr = wmem_strdup_printf(pinfo->pool, "%c", 'M');
+        }
+        else {
+            src_addr = wmem_strdup_printf(pinfo->pool, "%c:%s", 'O', address);
+            dst_addr = wmem_strdup_printf(pinfo->pool, "%c:%s", 'M', address);
+        }
     }
 
     set_address(&pinfo->dl_dst, AT_STRINGZ, (int)strlen(dst_addr) + 1, dst_addr);

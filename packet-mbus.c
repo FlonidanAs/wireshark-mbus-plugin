@@ -147,13 +147,10 @@ dissect_mbus_short_frame(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
     uint8_t cfield = mbus_dissect_cfield(tvb, pinfo, tree, &offset);
 
-    uint8_t address = tvb_get_uint8(tvb, offset);
     proto_tree_add_item(tree, hf_mbus_addr, tvb, offset, 1, ENC_NA);
     offset += 1;
 
-    char address_str[5];
-    snprintf(address_str, sizeof(address_str), "0x%02x", address);
-    mbus_set_address_and_port_info(pinfo, cfield, address_str);
+    mbus_set_address_and_port_info(pinfo, cfield, NULL);
 
     proto_tree_add_item(tree, hf_mbus_crc, tvb, offset, 1, ENC_NA);
     offset += 1;
@@ -199,9 +196,7 @@ dissect_mbus_long_frame(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     proto_tree_add_item(tree, hf_mbus_addr, tvb, offset, 1, ENC_NA);
     offset += 1;
 
-    char address_str[5];
-    snprintf(address_str, sizeof(address_str), "0x%02x", mbus_info.wired_info.address);
-    mbus_set_address_and_port_info(pinfo, mbus_info.cfield, address_str);
+    mbus_set_address_and_port_info(pinfo, mbus_info.cfield, NULL);
 
     /* Create a new tvb for the next dissector */
     tvbuff_t* new_tvb = tvb_new_subset_length(tvb, offset, tvb_reported_length_remaining(tvb, offset) - 2); // -2 for CRC and 0x16
