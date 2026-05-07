@@ -163,6 +163,11 @@ dissect_mbus_afl(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
         /* Block numbers are counting from 0 in fragment_add_seq_check */
         block_num--;
 
+        /* Delete any previous in-progress reassembly if we get a new start packet */
+        if (block_num == 0) {
+            fragment_delete(&mbus_reassembly_table, pinfo, msg_id, NULL);
+        }
+
         bool more_fragment = (afl_fcl & MBUS_AFL_FCL_MF_MASK) != 0;
         fragment_head *frag_msg = fragment_add_seq_check(&mbus_reassembly_table,
                                                          payload_tvb, 0, pinfo, msg_id, NULL,
