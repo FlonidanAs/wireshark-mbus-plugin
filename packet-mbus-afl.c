@@ -164,7 +164,7 @@ dissect_mbus_afl(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
         block_num--;
 
         /* Delete any previous in-progress reassembly if we get a new start packet */
-        if (block_num == 0) {
+        if ((block_num == 0) && !pinfo->fd->visited) {
             fragment_delete(&mbus_reassembly_table, pinfo, msg_id, NULL);
         }
 
