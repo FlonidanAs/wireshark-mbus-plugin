@@ -129,7 +129,9 @@ bool mbus_is_tls_ci_field(uint8_t ciField);
 void mbus_manufacturer_id_to_string(char *s, size_t buffer_size, uint16_t value);
 void mbus_decode_manufacturer_id(char *s, uint16_t value);
 
-void mbus_set_address_and_port_info(packet_info *pinfo, uint8_t cfield, const char* address);
+void mbus_set_address(packet_info *pinfo, uint8_t cfield, const char* address);
+
+void mbus_set_address_from_info(packet_info *pinfo, mbus_packet_info_t* packet_info);
 
 #endif /* PACKET_MBUS_COMMON_H */
 

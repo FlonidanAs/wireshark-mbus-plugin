@@ -117,7 +117,7 @@ static bool is_msg_from_meter(uint8_t cfield)
     return msg_from_meter;
 }
 
-void mbus_set_address_and_port_info(packet_info *pinfo, uint8_t cfield, const char* address)
+void mbus_set_address(packet_info *pinfo, uint8_t cfield, const char* address)
 {
     char* src_addr;
     char* dst_addr;
@@ -152,4 +152,20 @@ void mbus_set_address_and_port_info(packet_info *pinfo, uint8_t cfield, const ch
     // MBus doesn't have ports, so we just set them to 0.
     pinfo->srcport = 0;
     pinfo->destport = 0;
+}
+
+static void create_address_string(uint16_t manufacturer, uint32_t id, uint8_t version, uint8_t device, char* buffer, size_t buffer_size)
+{
+    char manufacturer_str[4];
+    mbus_manufacturer_id_to_string(manufacturer_str, sizeof(manufacturer_str), manufacturer);
+    snprintf(buffer, buffer_size, "%s-%08x-%02x-%02x", manufacturer_str, id, version, device);
+}
+
+void mbus_set_address_from_info(packet_info *pinfo, mbus_packet_info_t* packet_info)
+{
+    char address_str[ITEM_LABEL_LENGTH];
+    create_address_string(packet_info->security_info.manufacturer, packet_info->security_info.identification_number,
+                          packet_info->security_info.version, packet_info->security_info.device,
+                          address_str, sizeof(address_str));
+    mbus_set_address(pinfo, packet_info->cfield, address_str);
 }

@@ -237,6 +237,12 @@ static void dissect_mbus_common_layers(tvbuff_t *tvb, packet_info *pinfo, proto_
                             break;
                     }
                     mbus_packet_info.security_info.fields_present = true;
+
+                    // Update address information based on the long header info.
+                    // This must only be done for wireless messages to avoid breaking dtls conversation tracking for wired messages.
+                    if (mbus_packet_info.wireless) {
+                        mbus_set_address_from_info(pinfo, &mbus_packet_info);
+                    }
                     break;
                 default:
                     break;

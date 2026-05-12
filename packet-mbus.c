@@ -150,7 +150,7 @@ dissect_mbus_short_frame(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     proto_tree_add_item(tree, hf_mbus_addr, tvb, offset, 1, ENC_NA);
     offset += 1;
 
-    mbus_set_address_and_port_info(pinfo, cfield, NULL);
+    mbus_set_address(pinfo, cfield, NULL);
 
     proto_tree_add_item(tree, hf_mbus_crc, tvb, offset, 1, ENC_NA);
     offset += 1;
@@ -196,7 +196,7 @@ dissect_mbus_long_frame(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     proto_tree_add_item(tree, hf_mbus_addr, tvb, offset, 1, ENC_NA);
     offset += 1;
 
-    mbus_set_address_and_port_info(pinfo, mbus_info.cfield, NULL);
+    mbus_set_address(pinfo, mbus_info.cfield, NULL);
 
     /* Create a new tvb for the next dissector */
     tvbuff_t* new_tvb = tvb_new_subset_length(tvb, offset, tvb_reported_length_remaining(tvb, offset) - 2); // -2 for CRC and 0x16

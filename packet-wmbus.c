@@ -169,13 +169,6 @@ dissect_wmbus_message_format_a(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
     return payload_tvb;
 }
 
-static void create_address_string(uint16_t manufacturer, uint32_t id, uint8_t version, uint8_t device, char* buffer, size_t buffer_size)
-{
-    char manufacturer_str[4];
-    mbus_manufacturer_id_to_string(manufacturer_str, sizeof(manufacturer_str), manufacturer);
-    snprintf(buffer, buffer_size, "%s-%08x-%02x-%02x", manufacturer_str, id, version, device);
-}
-
 static void
 dissect_wmbus_frame(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, const wmbus_message_info_t* wmbus_message_info)
 {
@@ -238,11 +231,7 @@ dissect_wmbus_frame(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, const w
     proto_item_set_end(proto_tree_get_parent(link_layer_tree), tvb, offset);
 
     /* Set address information */
-    char address_str[ITEM_LABEL_LENGTH];
-    create_address_string(mbus_info.security_info.manufacturer, mbus_info.security_info.identification_number,
-                          mbus_info.security_info.version, mbus_info.security_info.device,
-                          address_str, sizeof(address_str));
-    mbus_set_address_and_port_info(pinfo, mbus_info.cfield, address_str);
+    mbus_set_address_from_info(pinfo, &mbus_info);
 
     /* Call ELL, AFL or TPL dissector. Depends on the CI Field */
     if (tvb_reported_length_remaining(tvb, offset) > 0) {
