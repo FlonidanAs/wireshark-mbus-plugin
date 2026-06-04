@@ -15,20 +15,35 @@
 #include <epan/prefs.h>
 #include <stdint.h>
 
-/* MBus Proprietary Commands */
-#define mbus_proprietary_cmd_names_VALUE_STRING_LIST(XXX) \
-    XXX(MBUS_PROPRIETARY_COMMAND_DSMR6,                           0x60, "DSMR6")
+#define dsmr6_protocol_id_names_VALUE_STRING_LIST(XXX) \
+    XXX(DSMR6_PROTOCOL_ID, 0x60, "DSMR6")
 
-VALUE_STRING_ENUM(mbus_proprietary_cmd_names);
-VALUE_STRING_ARRAY(mbus_proprietary_cmd_names);
-static value_string_ext mbus_proprietary_cmd_names_ext = VALUE_STRING_EXT_INIT(mbus_proprietary_cmd_names);
+VALUE_STRING_ENUM(dsmr6_protocol_id_names);
+VALUE_STRING_ARRAY(dsmr6_protocol_id_names);
+static value_string_ext dsmr6_protocol_id_names_ext = VALUE_STRING_EXT_INIT(dsmr6_protocol_id_names);
 
 #define dsmr6_message_codes_VALUE_STRING_LIST(XXX) \
-    XXX(DSMR6_MESSAGE_CODE_BILLING_PUSH_VC,                       0x01, "Billing Push (Vc)") \
-    XXX(DSMR6_MESSAGE_CODE_BILLING_PUSH_VB,                       0x02, "Billing Push (Vb)") \
-    XXX(DSMR6_MESSAGE_CODE_PERIODIC_PUSH_VC,                      0x03, "Periodic Push (Vc)") \
-    XXX(DSMR6_MESSAGE_CODE_PERIODIC_PUSH_VB,                      0x04, "Periodic Push (Vb)") \
-    XXX(DSMR6_MESSAGE_CODE_EVENT_PUSH,                            0x05, "Event Push")
+    XXX(DSMR6_MESSAGE_CODE_BILLING_PUSH_VC_NO_SIGNATURE,          1, "Billing Push Vc (No Signature)") \
+    XXX(DSMR6_MESSAGE_CODE_BILLING_PUSH_VC,                       2, "Billing Push Vc") \
+    XXX(DSMR6_MESSAGE_CODE_BILLING_PUSH_VB_NO_SIGNATURE,          3, "Billing Push Vb (No Signature)") \
+    XXX(DSMR6_MESSAGE_CODE_BILLING_PUSH_VB,                       4, "Billing Push Vb") \
+    XXX(DSMR6_MESSAGE_CODE_PERIODIC_PUSH_VC_NO_SIGNATURE,         10, "Periodic Push Vc (No Signature)") \
+    XXX(DSMR6_MESSAGE_CODE_PERIODIC_PUSH_VC,                      11, "Periodic Push Vc") \
+    XXX(DSMR6_MESSAGE_CODE_PERIODIC_PUSH_VB_NO_SIGNATURE,         12, "Periodic Push Vb (No Signature)") \
+    XXX(DSMR6_MESSAGE_CODE_PERIODIC_PUSH_VB,                      13, "Periodic Push Vb") \
+    XXX(DSMR6_MESSAGE_CODE_EVENT_PUSH,                            20, "Event Push") \
+    XXX(DSMR6_MESSAGE_CODE_CONFIGURE_BILLING_INTERVAL,            30, "Configure Billing Interval") \
+    XXX(DSMR6_MESSAGE_CODE_CONFIGURE_BILLING_INTERVAL_RESPONSE,   31, "Configure Billing Interval Response") \
+    XXX(DSMR6_MESSAGE_CODE_CONFIGURE_PERIODIC_INTERVAL,           40, "Configure Periodic Interval") \
+    XXX(DSMR6_MESSAGE_CODE_CONFIGURE_PERIODIC_INTERVAL_RESPONSE,  41, "Configure Periodic Interval Response") \
+    XXX(DSMR6_MESSAGE_CODE_READ_BILLING_LOG,                      50, "Read Billing Log") \
+    XXX(DSMR6_MESSAGE_CODE_READ_BILLING_LOG_RESPONSE,             51, "Read Billing Log Response") \
+    XXX(DSMR6_MESSAGE_CODE_CLEAR_BILLING_LOG,                     52, "Clear Billing Log") \
+    XXX(DSMR6_MESSAGE_CODE_CLEAR_BILLING_LOG_RESPONSE,            53, "Clear Billing Log Response") \
+    XXX(DSMR6_MESSAGE_CODE_READ_EVENT_LOG,                        60, "Read Event Log") \
+    XXX(DSMR6_MESSAGE_CODE_READ_EVENT_LOG_RESPONSE,               61, "Read Event Log Response") \
+    XXX(DSMR6_MESSAGE_CODE_CLEAR_EVENT_LOG,                       62, "Clear Event Log") \
+    XXX(DSMR6_MESSAGE_CODE_CLEAR_EVENT_LOG_RESPONSE,              63, "Clear Event Log Response")
 
 VALUE_STRING_ENUM(dsmr6_message_codes);
 VALUE_STRING_ARRAY(dsmr6_message_codes);
@@ -37,99 +52,125 @@ static value_string_ext dsmr6_message_codes_ext = VALUE_STRING_EXT_INIT(dsmr6_me
 /*************************/
 /* Function Declarations */
 /*************************/
-void proto_register_mbus_dsmr6(void);
-void proto_reg_handoff_mbus_dsmr6(void);
+void proto_register_dsmr6(void);
+void proto_reg_handoff_dsmr6(void);
 
 /*************************/
 /** Global Variables    **/
 /*************************/
 /* Dissector Handles. */
-static dissector_handle_t mbus_dsmr6_handle;
+static dissector_handle_t dsmr6_handle;
 
 /* Initialize the protocol and registered fields */
-static int proto_mbus_dsmr6;
+static int proto_dsmr6;
 
-static int hf_mbus_man_code;
-static int hf_mbus_dsmr6_message_code;
-static int hf_mbus_dsmr6_message_length;
-static int hf_mbus_dsmr6_date_time;
-static int hf_mbus_dsmr6_equipment_id;
-static int hf_mbus_dsmr6_volume;
-static int hf_mbus_dsmr6_amr_status_byte;
-static int hf_mbus_dsmr6_signature;
-static int hf_mbus_dsmr6_temperature;
-static int hf_mbus_dsmr6_status_byte;
-static int hf_mbus_dsmr6_event_time;
-static int hf_mbus_dsmr6_event_log;
-static int hf_mbus_dsmr6_event_code;
+static int hf_dsmr6_protocol_id;
+static int hf_dsmr6_message_code;
+static int hf_dsmr6_message_length;
+static int hf_dsmr6_date_time;
+static int hf_dsmr6_equipment_id;
+static int hf_dsmr6_volume;
+static int hf_dsmr6_amr_status_byte;
+static int hf_dsmr6_signature_length;
+static int hf_dsmr6_signature;
+static int hf_dsmr6_temperature;
+static int hf_dsmr6_status_byte;
+static int hf_dsmr6_event_time;
+static int hf_dsmr6_event_log;
+static int hf_dsmr6_event_code;
 
-static int ett_mbus_dsmr6;
+static int hf_dsmr6_billing_log_start_time;
+static int hf_dsmr6_billing_log_end_time;
+static int hf_dsmr6_billing_log_id;
+static int hf_dsmr6_billing_log_number_of_entries;
+
+static int ett_dsmr6;
+static int ett_dsmr6_header;
+static int ett_dsmr6_payload;
+static int ett_dsmr6_billing_log_entries;
 
 static void dissect_billing_push(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int* offset)
 {
-    proto_tree_add_item(tree, hf_mbus_dsmr6_date_time, tvb, *offset, 4, ENC_TIME_ZBEE_ZCL | ENC_LITTLE_ENDIAN);
+    proto_tree_add_item(tree, hf_dsmr6_date_time, tvb, *offset, 4, ENC_TIME_ZBEE_ZCL | ENC_LITTLE_ENDIAN);
     *offset += 4;
-    proto_tree_add_item(tree, hf_mbus_dsmr6_equipment_id, tvb, *offset, 17, ENC_LITTLE_ENDIAN);
+    proto_tree_add_item(tree, hf_dsmr6_equipment_id, tvb, *offset, 17, ENC_LITTLE_ENDIAN);
     *offset += 17;
-    proto_tree_add_item(tree, hf_mbus_dsmr6_volume, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
+    proto_tree_add_item(tree, hf_dsmr6_volume, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
     *offset += 4;
-    proto_tree_add_item(tree, hf_mbus_dsmr6_amr_status_byte, tvb, *offset, 1, ENC_NA);
+    proto_tree_add_item(tree, hf_dsmr6_amr_status_byte, tvb, *offset, 1, ENC_NA);
     *offset += 1;
-    proto_tree_add_item(tree, hf_mbus_dsmr6_signature, tvb, *offset, 64, ENC_NA);
-    *offset += 64;
-    proto_tree_add_item(tree, hf_mbus_dsmr6_temperature, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+    uint8_t signature_length = tvb_get_uint8(tvb, *offset);
+    proto_tree_add_item(tree, hf_dsmr6_signature_length, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+    if (signature_length > 0) {
+        proto_tree_add_item(tree, hf_dsmr6_signature, tvb, *offset, signature_length, ENC_NA);
+        *offset += signature_length;
+    }
+    proto_tree_add_item(tree, hf_dsmr6_temperature, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
     *offset += 2;
-    proto_tree_add_item(tree, hf_mbus_dsmr6_status_byte, tvb, *offset, 1, ENC_NA);
+    proto_tree_add_item(tree, hf_dsmr6_status_byte, tvb, *offset, 1, ENC_NA);
     *offset += 1;
-    proto_tree_add_item(tree, hf_mbus_dsmr6_event_time, tvb, *offset, 4, ENC_TIME_ZBEE_ZCL | ENC_LITTLE_ENDIAN);
+    proto_tree_add_item(tree, hf_dsmr6_event_time, tvb, *offset, 4, ENC_TIME_ZBEE_ZCL | ENC_LITTLE_ENDIAN);
     *offset += 4;
-    proto_tree_add_item(tree, hf_mbus_dsmr6_event_log, tvb, *offset, 1, ENC_NA);
+    proto_tree_add_item(tree, hf_dsmr6_event_log, tvb, *offset, 1, ENC_NA);
     *offset += 1;
-    proto_tree_add_item(tree, hf_mbus_dsmr6_event_code, tvb, *offset, 1, ENC_NA);
+    proto_tree_add_item(tree, hf_dsmr6_event_code, tvb, *offset, 1, ENC_NA);
     *offset += 1;
 }
 
-static void dissect_periodic_push(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int* offset)
+static void dissect_periodic_push_no_signature(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int* offset)
 {
-    proto_tree_add_item(tree, hf_mbus_dsmr6_date_time, tvb, *offset, 4, ENC_TIME_ZBEE_ZCL | ENC_LITTLE_ENDIAN);
+    proto_tree_add_item(tree, hf_dsmr6_date_time, tvb, *offset, 4, ENC_TIME_ZBEE_ZCL | ENC_LITTLE_ENDIAN);
     *offset += 4;
-    proto_tree_add_item(tree, hf_mbus_dsmr6_volume, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
+    proto_tree_add_item(tree, hf_dsmr6_volume, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
     *offset += 4;
-    proto_tree_add_item(tree, hf_mbus_dsmr6_temperature, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+    proto_tree_add_item(tree, hf_dsmr6_temperature, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
     *offset += 2;
-    proto_tree_add_item(tree, hf_mbus_dsmr6_status_byte, tvb, *offset, 1, ENC_NA);
+    proto_tree_add_item(tree, hf_dsmr6_status_byte, tvb, *offset, 1, ENC_NA);
     *offset += 1;
-    proto_tree_add_item(tree, hf_mbus_dsmr6_event_time, tvb, *offset, 4, ENC_TIME_ZBEE_ZCL | ENC_LITTLE_ENDIAN);
+    proto_tree_add_item(tree, hf_dsmr6_event_time, tvb, *offset, 4, ENC_TIME_ZBEE_ZCL | ENC_LITTLE_ENDIAN);
     *offset += 4;
-    proto_tree_add_item(tree, hf_mbus_dsmr6_event_code, tvb, *offset, 1, ENC_NA);
+    proto_tree_add_item(tree, hf_dsmr6_event_log, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+    proto_tree_add_item(tree, hf_dsmr6_event_code, tvb, *offset, 1, ENC_NA);
     *offset += 1;
 }
 
-static void
-dissect_mbus_dsmr6_command(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int* offset)
+static void dissect_read_billing_log(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int* offset)
 {
-    uint8_t message_code = tvb_get_uint8(tvb, *offset);
-    col_add_fstr(pinfo->cinfo, COL_INFO, "%s", val_to_str_const(message_code, dsmr6_message_codes, "Unknown Cmd"));
-    proto_tree_add_item(tree, hf_mbus_dsmr6_message_code, tvb, *offset, 1, ENC_NA);
+    proto_tree_add_item(tree, hf_dsmr6_billing_log_start_time, tvb, *offset, 4, ENC_TIME_ZBEE_ZCL | ENC_LITTLE_ENDIAN);
+    *offset += 4;
+    proto_tree_add_item(tree, hf_dsmr6_billing_log_end_time, tvb, *offset, 4, ENC_TIME_ZBEE_ZCL | ENC_LITTLE_ENDIAN);
+    *offset += 4;
+    proto_tree_add_item(tree, hf_dsmr6_billing_log_id, tvb, *offset, 1, ENC_NA);
     *offset += 1;
+}
 
-    // uint16_t message_length = tvb_get_uint16(tvb, *offset, ENC_LITTLE_ENDIAN);
-    proto_tree_add_item(tree, hf_mbus_dsmr6_message_length, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
-    *offset += 2;
+static void dissect_read_billing_log_response(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int* offset)
+{
+    proto_tree_add_item(tree, hf_dsmr6_billing_log_id, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+    uint8_t number_of_entries = tvb_get_uint8(tvb, *offset);
+    proto_tree_add_item(tree, hf_dsmr6_billing_log_number_of_entries, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+    for (size_t i = 0; i < number_of_entries; i++) {
+        proto_tree* entry_tree = proto_tree_add_subtree_format(tree, tvb, *offset, 0, ett_dsmr6_billing_log_entries, NULL, "Billing Log Entry %zu", i + 1);
 
-    switch (message_code) {
-        case DSMR6_MESSAGE_CODE_BILLING_PUSH_VC:
-        case DSMR6_MESSAGE_CODE_BILLING_PUSH_VB:
-            dissect_billing_push(tvb, pinfo, tree, offset);
-            break;
-        case DSMR6_MESSAGE_CODE_PERIODIC_PUSH_VC:
-        case DSMR6_MESSAGE_CODE_PERIODIC_PUSH_VB:
-            dissect_periodic_push(tvb, pinfo, tree, offset);
-            break;
-        case DSMR6_MESSAGE_CODE_EVENT_PUSH:
-            break;
-        default:
-            break;
+        proto_tree_add_item(entry_tree, hf_dsmr6_date_time, tvb, *offset, 4, ENC_TIME_ZBEE_ZCL | ENC_LITTLE_ENDIAN);
+        *offset += 4;
+        proto_tree_add_item(entry_tree, hf_dsmr6_equipment_id, tvb, *offset, 17, ENC_LITTLE_ENDIAN);
+        *offset += 17;
+        proto_tree_add_item(entry_tree, hf_dsmr6_volume, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
+        *offset += 4;
+        proto_tree_add_item(entry_tree, hf_dsmr6_amr_status_byte, tvb, *offset, 1, ENC_NA);
+        *offset += 1;
+        uint8_t signature_length = tvb_get_uint8(tvb, *offset);
+        proto_tree_add_item(entry_tree, hf_dsmr6_signature_length, tvb, *offset, 1, ENC_NA);
+        *offset += 1;
+        if (signature_length > 0) {
+            proto_tree_add_item(entry_tree, hf_dsmr6_signature, tvb, *offset, signature_length, ENC_NA);
+            *offset += signature_length;
+        }
     }
 }
 
@@ -141,8 +182,8 @@ static bool check_dsmr6_command(tvbuff_t *tvb)
         return false; // Not enough data for DSMR6 command
     }
 
-    uint8_t man_code = tvb_get_uint8(tvb, offset);
-    if (man_code != MBUS_PROPRIETARY_COMMAND_DSMR6) {
+    uint8_t protocol_id = tvb_get_uint8(tvb, offset);
+    if (protocol_id != DSMR6_PROTOCOL_ID) {
         return false;
     }
 
@@ -152,99 +193,148 @@ static bool check_dsmr6_command(tvbuff_t *tvb)
 }
 
 static int
-dissect_mbus_dsmr6(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
+dissect_dsmr6(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 {
     if (!check_dsmr6_command(tvb)) {
         return 0;
     }
 
-    proto_tree* mbus_flo_tree;
-    proto_item* proto_root;
     int offset = 0;
 
     /* Create the protocol tree */
-    proto_root = proto_tree_add_protocol_format(tree, proto_mbus_dsmr6, tvb, offset, tvb_captured_length(tvb), "DSMR6");
-    mbus_flo_tree = proto_item_add_subtree(proto_root, ett_mbus_dsmr6);
+    proto_item* proto_root = proto_tree_add_protocol_format(tree, proto_dsmr6, tvb, offset, tvb_captured_length(tvb), "DSMR6");
+    proto_tree* dsmr6_tree = proto_item_add_subtree(proto_root, ett_dsmr6);
+    col_set_str(pinfo->cinfo, COL_PROTOCOL, "DSMR6");
 
-    uint8_t man_code = tvb_get_uint8(tvb, offset);
-    proto_tree_add_item(mbus_flo_tree, hf_mbus_man_code, tvb, offset, 1, ENC_NA);
+    /* Header */
+    uint8_t message_code = tvb_get_uint8(tvb, offset + 1); // Message code is at offset 1 in the header
+    const char* message_code_str = val_to_str_const(message_code, dsmr6_message_codes, "Unknown Cmd");
+    col_add_fstr(pinfo->cinfo, COL_INFO, "%s", message_code_str);
+    proto_tree* header_tree = proto_tree_add_subtree_format(dsmr6_tree, tvb, offset, 3, ett_dsmr6_header, NULL, "Header: %s", message_code_str);
+
+    proto_tree_add_item(header_tree, hf_dsmr6_protocol_id, tvb, offset, 1, ENC_NA);
     offset += 1;
 
-    col_append_sep_fstr(pinfo->cinfo, COL_INFO, NULL, "%s", val_to_str_const(man_code, mbus_proprietary_cmd_names, "Unknown Cmd"));
+    proto_tree_add_item(header_tree, hf_dsmr6_message_code, tvb, offset, 1, ENC_NA);
+    offset += 1;
 
-    switch (man_code) {
-        case MBUS_PROPRIETARY_COMMAND_DSMR6:
-            dissect_mbus_dsmr6_command(tvb, pinfo, mbus_flo_tree, &offset);
-            break;
-        default:
-            break;
+    proto_tree_add_item(header_tree, hf_dsmr6_message_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+    offset += 2;
+
+    /* Payload */
+    int rem_len = tvb_reported_length_remaining(tvb, offset);
+    if (rem_len > 0) {
+        proto_tree* payload_tree = proto_tree_add_subtree(dsmr6_tree, tvb, offset, rem_len, ett_dsmr6_payload, NULL, "Payload");
+        switch (message_code) {
+            case DSMR6_MESSAGE_CODE_BILLING_PUSH_VC:
+            case DSMR6_MESSAGE_CODE_BILLING_PUSH_VB:
+                dissect_billing_push(tvb, pinfo, payload_tree, &offset);
+                break;
+            case DSMR6_MESSAGE_CODE_PERIODIC_PUSH_VC_NO_SIGNATURE:
+            case DSMR6_MESSAGE_CODE_PERIODIC_PUSH_VB_NO_SIGNATURE:
+                dissect_periodic_push_no_signature(tvb, pinfo, payload_tree, &offset);
+                break;
+            case DSMR6_MESSAGE_CODE_PERIODIC_PUSH_VC:
+            case DSMR6_MESSAGE_CODE_PERIODIC_PUSH_VB:
+                // Same format as billing push
+                dissect_billing_push(tvb, pinfo, payload_tree, &offset);
+                break;
+            case DSMR6_MESSAGE_CODE_EVENT_PUSH:
+                break;
+            case DSMR6_MESSAGE_CODE_READ_BILLING_LOG:
+                dissect_read_billing_log(tvb, pinfo, payload_tree, &offset);
+                break;
+            case DSMR6_MESSAGE_CODE_READ_BILLING_LOG_RESPONSE:
+                dissect_read_billing_log_response(tvb, pinfo, payload_tree, &offset);
+                break;
+            default:
+                break;
+        }
     }
 
     return tvb_captured_length(tvb);
 }
 
 void
-proto_register_mbus_dsmr6(void)
+proto_register_dsmr6(void)
 {
     static hf_register_info hf[] = {
-        { &hf_mbus_man_code,
-            { "Manufacturer Code", "mbus_dsmr6.man_code", FT_UINT8, BASE_HEX | BASE_EXT_STRING, &mbus_proprietary_cmd_names_ext,
+        { &hf_dsmr6_protocol_id,
+            { "Protocol Id", "dsmr6.protocol_id", FT_UINT8, BASE_HEX | BASE_EXT_STRING, &dsmr6_protocol_id_names_ext,
               0x00, NULL, HFILL } },
-        { &hf_mbus_dsmr6_message_code,
-            { "Message Code", "mbus_dsmr6.message_code", FT_UINT8, BASE_HEX | BASE_EXT_STRING, &dsmr6_message_codes_ext,
+        { &hf_dsmr6_message_code,
+            { "Message Code", "dsmr6.message_code", FT_UINT8, BASE_HEX | BASE_EXT_STRING, &dsmr6_message_codes_ext,
               0x00, NULL, HFILL } },
-        { &hf_mbus_dsmr6_message_length,
-            { "Message Length", "mbus_dsmr6.message_length", FT_UINT16, BASE_DEC, NULL,
+        { &hf_dsmr6_message_length,
+            { "Message Length", "dsmr6.message_length", FT_UINT16, BASE_DEC, NULL,
               0x00, NULL, HFILL } },
-        { &hf_mbus_dsmr6_date_time,
-            { "Date Time", "mbus_dsmr6.timestamp", FT_ABSOLUTE_TIME, ABSOLUTE_TIME_UTC, NULL,
+        { &hf_dsmr6_date_time,
+            { "Date Time", "dsmr6.timestamp", FT_ABSOLUTE_TIME, ABSOLUTE_TIME_UTC, NULL,
               0x00, NULL, HFILL} },
-        { &hf_mbus_dsmr6_equipment_id,
-            { "Equipment ID", "mbus_dsmr6.equipment_id", FT_STRING, BASE_NONE, NULL,
+        { &hf_dsmr6_equipment_id,
+            { "Equipment ID", "dsmr6.equipment_id", FT_STRING, BASE_NONE, NULL,
               0x00, NULL, HFILL } },
-        { &hf_mbus_dsmr6_volume,
-            { "Volume", "mbus_dsmr6.volume", FT_UINT32, BASE_DEC, NULL,
+        { &hf_dsmr6_volume,
+            { "Volume", "dsmr6.volume", FT_UINT32, BASE_DEC, NULL,
               0x00, NULL, HFILL } },
-        { &hf_mbus_dsmr6_amr_status_byte,
-            { "AMR Status Byte", "mbus_dsmr6.amr_status_byte", FT_UINT8, BASE_HEX, NULL,
+        { &hf_dsmr6_amr_status_byte,
+            { "AMR Status Byte", "dsmr6.amr_status_byte", FT_UINT8, BASE_HEX, NULL,
               0x00, NULL, HFILL } },
-        { &hf_mbus_dsmr6_signature,
-            { "Signature", "mbus_dsmr6.signature", FT_BYTES, BASE_NONE, NULL,
+        { &hf_dsmr6_signature_length,
+            { "Signature Length", "dsmr6.signature_length", FT_UINT8, BASE_DEC, NULL,
               0x00, NULL, HFILL } },
-        { &hf_mbus_dsmr6_temperature,
-            { "Temperature", "mbus_dsmr6.temperature", FT_UINT16, BASE_DEC, NULL,
+        { &hf_dsmr6_signature,
+            { "Signature", "dsmr6.signature", FT_BYTES, BASE_NONE, NULL,
               0x00, NULL, HFILL } },
-        { &hf_mbus_dsmr6_status_byte,
-            { "Status Byte", "mbus_dsmr6.status_byte", FT_UINT8, BASE_HEX, NULL,
+        { &hf_dsmr6_temperature,
+            { "Temperature", "dsmr6.temperature", FT_UINT16, BASE_DEC, NULL,
               0x00, NULL, HFILL } },
-        { &hf_mbus_dsmr6_event_time,
-            { "Event Time", "mbus_dsmr6.event_time", FT_ABSOLUTE_TIME, ABSOLUTE_TIME_UTC, NULL,
+        { &hf_dsmr6_status_byte,
+            { "Status Byte", "dsmr6.status_byte", FT_UINT8, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_event_time,
+            { "Event Time", "dsmr6.event_time", FT_ABSOLUTE_TIME, ABSOLUTE_TIME_UTC, NULL,
               0x00, NULL, HFILL} },
-        { &hf_mbus_dsmr6_event_log,
-            { "Event Log", "mbus_dsmr6.event_log", FT_UINT8, BASE_HEX, NULL,
+        { &hf_dsmr6_event_log,
+            { "Event Log", "dsmr6.event_log", FT_UINT8, BASE_HEX, NULL,
               0x00, NULL, HFILL } },
-        { &hf_mbus_dsmr6_event_code,
-            { "Event Code", "mbus_dsmr6.event_code", FT_UINT8, BASE_HEX, NULL,
-              0x00, NULL, HFILL } }
+        { &hf_dsmr6_event_code,
+            { "Event Code", "dsmr6.event_code", FT_UINT8, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_billing_log_start_time,
+            { "Billing Log Start Time", "dsmr6.billing_log.start_time", FT_ABSOLUTE_TIME, ABSOLUTE_TIME_UTC, NULL,
+              0x00, NULL, HFILL} },
+        { &hf_dsmr6_billing_log_end_time,
+            { "Billing Log End Time", "dsmr6.billing_log.end_time", FT_ABSOLUTE_TIME, ABSOLUTE_TIME_UTC, NULL,
+              0x00, NULL, HFILL} },
+        { &hf_dsmr6_billing_log_id,
+            { "Billing Log ID", "dsmr6.billing_log.id", FT_UINT8, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_billing_log_number_of_entries,
+            { "Billing Log Number of Entries", "dsmr6.billing_log.number_of_entries", FT_UINT8, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
     };
 
     /* MBus subtrees */
     int *ett[] = {
-        &ett_mbus_dsmr6
+        &ett_dsmr6,
+        &ett_dsmr6_header,
+        &ett_dsmr6_payload,
+        &ett_dsmr6_billing_log_entries,
     };
 
-    proto_mbus_dsmr6 = proto_register_protocol("MBus DSMR6", "MBus DSMR6", "mbus_dsmr6");
-    proto_register_field_array(proto_mbus_dsmr6, hf, array_length(hf));
+    proto_dsmr6 = proto_register_protocol("DSMR6", "DSMR6", "dsmr6");
+    proto_register_field_array(proto_dsmr6, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
 
     /* Register dissector */
-    mbus_dsmr6_handle = register_dissector("mbus_dsmr6", dissect_mbus_dsmr6, proto_mbus_dsmr6);
+    dsmr6_handle = register_dissector("dsmr6", dissect_dsmr6, proto_dsmr6);
 }
 
 static bool
 dissect_dsmr6_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 {
-    if (dissect_mbus_dsmr6(tvb, pinfo, tree, false) == 0) {
+    if (dissect_dsmr6(tvb, pinfo, tree, false) == 0) {
         // Not a valid MBus DSMR6 packet
         return false;
     }
@@ -252,10 +342,10 @@ dissect_dsmr6_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *da
 }
 
 void
-proto_reg_handoff_mbus_dsmr6(void)
+proto_reg_handoff_dsmr6(void)
 {
-    heur_dissector_add("dtls", dissect_dsmr6_heur, "DSMR6 over DTLS", "dsmr6_dtls", proto_mbus_dsmr6, HEURISTIC_ENABLE);
-    heur_dissector_add("mbus", dissect_dsmr6_heur, "DSMR6 over MBus", "dsmr6_mbus", proto_mbus_dsmr6, HEURISTIC_ENABLE);
+    heur_dissector_add("dtls", dissect_dsmr6_heur, "DSMR6 over DTLS", "dsmr6_dtls", proto_dsmr6, HEURISTIC_ENABLE);
+    heur_dissector_add("mbus", dissect_dsmr6_heur, "DSMR6 over MBus", "dsmr6_mbus", proto_dsmr6, HEURISTIC_ENABLE);
 }
 
 /*
