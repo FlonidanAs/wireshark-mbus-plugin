@@ -23,6 +23,7 @@ VALUE_STRING_ARRAY(dsmr6_protocol_id_names);
 static value_string_ext dsmr6_protocol_id_names_ext = VALUE_STRING_EXT_INIT(dsmr6_protocol_id_names);
 
 #define dsmr6_message_codes_VALUE_STRING_LIST(XXX) \
+    XXX(DSMR6_MESSAGE_CODE_DEFAULT_RESPONSE,                      0, "Default Response") \
     XXX(DSMR6_MESSAGE_CODE_BILLING_PUSH_VC_NO_SIGNATURE,          1, "Billing Push Vc (No Signature)") \
     XXX(DSMR6_MESSAGE_CODE_BILLING_PUSH_VC,                       2, "Billing Push Vc") \
     XXX(DSMR6_MESSAGE_CODE_BILLING_PUSH_VB_NO_SIGNATURE,          3, "Billing Push Vb (No Signature)") \
@@ -48,6 +49,20 @@ static value_string_ext dsmr6_protocol_id_names_ext = VALUE_STRING_EXT_INIT(dsmr
 VALUE_STRING_ENUM(dsmr6_message_codes);
 VALUE_STRING_ARRAY(dsmr6_message_codes);
 static value_string_ext dsmr6_message_codes_ext = VALUE_STRING_EXT_INIT(dsmr6_message_codes);
+
+#define dsmr6_status_names_VALUE_STRING_LIST(XXX) \
+    XXX(DSMR6_STATUS_SUCCESS,               0, "Success") \
+    XXX(DSMR6_STATUS_FAILURE,               1, "Failure") \
+    XXX(DSMR6_STATUS_UNSUPPORTED_ATTRIBUTE, 2, "Unsupported Attribute") \
+    XXX(DSMR6_STATUS_INVALID_VALUE,         3, "Invalid Value") \
+    XXX(DSMR6_STATUS_READ_ONLY,             4, "Read Only") \
+    XXX(DSMR6_STATUS_WRITE_ONLY,            5, "Write Only") \
+    XXX(DSMR6_STATUS_INVALID_DATA_TYPE,     6, "Invalid Data Type") \
+    XXX(DSMR6_STATUS_UNSUPPORTED_COMMAND,   7, "Unsupported Command") \
+
+VALUE_STRING_ENUM(dsmr6_status_names);
+VALUE_STRING_ARRAY(dsmr6_status_names);
+static value_string_ext dsmr6_status_names_ext = VALUE_STRING_EXT_INIT(dsmr6_status_names);
 
 /*************************/
 /* Function Declarations */
@@ -75,19 +90,30 @@ static int hf_dsmr6_signature_length;
 static int hf_dsmr6_signature;
 static int hf_dsmr6_temperature;
 static int hf_dsmr6_status_byte;
-static int hf_dsmr6_event_time;
-static int hf_dsmr6_event_log;
-static int hf_dsmr6_event_code;
-
+static int hf_dsmr6_default_response_cmd_id;
+static int hf_dsmr6_default_response_status;
 static int hf_dsmr6_billing_log_start_time;
 static int hf_dsmr6_billing_log_end_time;
 static int hf_dsmr6_billing_log_id;
 static int hf_dsmr6_billing_log_number_of_entries;
+static int hf_dsmr6_event_push_time;
+static int hf_dsmr6_event_push_log;
+static int hf_dsmr6_event_push_code;
+static int hf_dsmr6_event_push_data;
+static int hf_dsmr6_event_push_status_byte;
 
 static int ett_dsmr6;
 static int ett_dsmr6_header;
 static int ett_dsmr6_payload;
 static int ett_dsmr6_billing_log_entries;
+
+static void dissect_default_response(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int* offset)
+{
+    proto_tree_add_item(tree, hf_dsmr6_default_response_cmd_id, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+    proto_tree_add_item(tree, hf_dsmr6_default_response_status, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+}
 
 static void dissect_billing_push(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int* offset)
 {
@@ -110,12 +136,6 @@ static void dissect_billing_push(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tr
     *offset += 2;
     proto_tree_add_item(tree, hf_dsmr6_status_byte, tvb, *offset, 1, ENC_NA);
     *offset += 1;
-    proto_tree_add_item(tree, hf_dsmr6_event_time, tvb, *offset, 4, ENC_TIME_ZBEE_ZCL | ENC_LITTLE_ENDIAN);
-    *offset += 4;
-    proto_tree_add_item(tree, hf_dsmr6_event_log, tvb, *offset, 1, ENC_NA);
-    *offset += 1;
-    proto_tree_add_item(tree, hf_dsmr6_event_code, tvb, *offset, 1, ENC_NA);
-    *offset += 1;
 }
 
 static void dissect_periodic_push_no_signature(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int* offset)
@@ -127,12 +147,6 @@ static void dissect_periodic_push_no_signature(tvbuff_t *tvb, packet_info *pinfo
     proto_tree_add_item(tree, hf_dsmr6_temperature, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
     *offset += 2;
     proto_tree_add_item(tree, hf_dsmr6_status_byte, tvb, *offset, 1, ENC_NA);
-    *offset += 1;
-    proto_tree_add_item(tree, hf_dsmr6_event_time, tvb, *offset, 4, ENC_TIME_ZBEE_ZCL | ENC_LITTLE_ENDIAN);
-    *offset += 4;
-    proto_tree_add_item(tree, hf_dsmr6_event_log, tvb, *offset, 1, ENC_NA);
-    *offset += 1;
-    proto_tree_add_item(tree, hf_dsmr6_event_code, tvb, *offset, 1, ENC_NA);
     *offset += 1;
 }
 
@@ -172,6 +186,20 @@ static void dissect_read_billing_log_response(tvbuff_t *tvb, packet_info *pinfo 
             *offset += signature_length;
         }
     }
+}
+
+static void dissect_event_push(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int* offset)
+{
+    proto_tree_add_item(tree, hf_dsmr6_event_push_time, tvb, *offset, 4, ENC_TIME_ZBEE_ZCL | ENC_LITTLE_ENDIAN);
+    *offset += 4;
+    proto_tree_add_item(tree, hf_dsmr6_event_push_log, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+    proto_tree_add_item(tree, hf_dsmr6_event_push_code, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+    proto_tree_add_item(tree, hf_dsmr6_event_push_data, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
+    *offset += 4;
+    proto_tree_add_item(tree, hf_dsmr6_event_push_status_byte, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
 }
 
 static bool check_dsmr6_command(tvbuff_t *tvb)
@@ -226,6 +254,9 @@ dissect_dsmr6(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
     if (rem_len > 0) {
         proto_tree* payload_tree = proto_tree_add_subtree(dsmr6_tree, tvb, offset, rem_len, ett_dsmr6_payload, NULL, "Payload");
         switch (message_code) {
+            case DSMR6_MESSAGE_CODE_DEFAULT_RESPONSE:
+                dissect_default_response(tvb, pinfo, payload_tree, &offset);
+                break;
             case DSMR6_MESSAGE_CODE_BILLING_PUSH_VC:
             case DSMR6_MESSAGE_CODE_BILLING_PUSH_VB:
                 dissect_billing_push(tvb, pinfo, payload_tree, &offset);
@@ -240,6 +271,7 @@ dissect_dsmr6(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
                 dissect_billing_push(tvb, pinfo, payload_tree, &offset);
                 break;
             case DSMR6_MESSAGE_CODE_EVENT_PUSH:
+                dissect_event_push(tvb, pinfo, payload_tree, &offset);
                 break;
             case DSMR6_MESSAGE_CODE_READ_BILLING_LOG:
                 dissect_read_billing_log(tvb, pinfo, payload_tree, &offset);
@@ -292,14 +324,11 @@ proto_register_dsmr6(void)
         { &hf_dsmr6_status_byte,
             { "Status Byte", "dsmr6.status_byte", FT_UINT8, BASE_HEX, NULL,
               0x00, NULL, HFILL } },
-        { &hf_dsmr6_event_time,
-            { "Event Time", "dsmr6.event_time", FT_ABSOLUTE_TIME, ABSOLUTE_TIME_UTC, NULL,
-              0x00, NULL, HFILL} },
-        { &hf_dsmr6_event_log,
-            { "Event Log", "dsmr6.event_log", FT_UINT8, BASE_HEX, NULL,
+        { &hf_dsmr6_default_response_cmd_id,
+            { "Default Response Command Id", "dsmr6.default_response.cmd_id", FT_UINT8, BASE_HEX | BASE_EXT_STRING, &dsmr6_message_codes_ext,
               0x00, NULL, HFILL } },
-        { &hf_dsmr6_event_code,
-            { "Event Code", "dsmr6.event_code", FT_UINT8, BASE_HEX, NULL,
+        { &hf_dsmr6_default_response_status,
+            { "Default Response Status", "dsmr6.default_response.status", FT_UINT8, BASE_HEX | BASE_EXT_STRING, &dsmr6_status_names_ext,
               0x00, NULL, HFILL } },
         { &hf_dsmr6_billing_log_start_time,
             { "Billing Log Start Time", "dsmr6.billing_log.start_time", FT_ABSOLUTE_TIME, ABSOLUTE_TIME_UTC, NULL,
@@ -312,6 +341,21 @@ proto_register_dsmr6(void)
               0x00, NULL, HFILL } },
         { &hf_dsmr6_billing_log_number_of_entries,
             { "Billing Log Number of Entries", "dsmr6.billing_log.number_of_entries", FT_UINT8, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_event_push_time,
+            { "Event Time", "dsmr6.event_push.time", FT_ABSOLUTE_TIME, ABSOLUTE_TIME_UTC, NULL,
+              0x00, NULL, HFILL} },
+        { &hf_dsmr6_event_push_log,
+            { "Event Log", "dsmr6.event_push.log", FT_UINT8, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_event_push_code,
+            { "Event Code", "dsmr6.event_push.code", FT_UINT8, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_event_push_data,
+            { "Event Data", "dsmr6.event_push.data", FT_UINT32, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_event_push_status_byte,
+            { "Event Status Byte", "dsmr6.event_push.status_byte", FT_UINT8, BASE_HEX, NULL,
               0x00, NULL, HFILL } },
     };
 
