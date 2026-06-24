@@ -96,6 +96,7 @@ static int hf_dsmr6_billing_log_start_time;
 static int hf_dsmr6_billing_log_end_time;
 static int hf_dsmr6_billing_log_id;
 static int hf_dsmr6_billing_log_number_of_entries;
+static int hf_dsmr6_clear_billing_log_logs;
 static int hf_dsmr6_event_push_time;
 static int hf_dsmr6_event_push_log;
 static int hf_dsmr6_event_push_code;
@@ -186,6 +187,12 @@ static void dissect_read_billing_log_response(tvbuff_t *tvb, packet_info *pinfo 
             *offset += signature_length;
         }
     }
+}
+
+static void dissect_clear_billing_log(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int* offset)
+{
+    proto_tree_add_item(tree, hf_dsmr6_clear_billing_log_logs, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
 }
 
 static void dissect_event_push(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int* offset)
@@ -279,6 +286,9 @@ dissect_dsmr6(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
             case DSMR6_MESSAGE_CODE_READ_BILLING_LOG_RESPONSE:
                 dissect_read_billing_log_response(tvb, pinfo, payload_tree, &offset);
                 break;
+            case DSMR6_MESSAGE_CODE_CLEAR_BILLING_LOG:
+                dissect_clear_billing_log(tvb, pinfo, payload_tree, &offset);
+                break;
             default:
                 break;
         }
@@ -341,6 +351,9 @@ proto_register_dsmr6(void)
               0x00, NULL, HFILL } },
         { &hf_dsmr6_billing_log_number_of_entries,
             { "Billing Log Number of Entries", "dsmr6.billing_log.number_of_entries", FT_UINT8, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_clear_billing_log_logs,
+            { "Clear Billing Logs", "dsmr6.clear_billing_log.logs", FT_UINT8, BASE_HEX, NULL,
               0x00, NULL, HFILL } },
         { &hf_dsmr6_event_push_time,
             { "Event Time", "dsmr6.event_push.time", FT_ABSOLUTE_TIME, ABSOLUTE_TIME_UTC, NULL,
