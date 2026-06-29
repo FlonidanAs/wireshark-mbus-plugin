@@ -362,10 +362,10 @@ dissect_wmbus(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
     tvbuff_t* payload_tvb;
 
     switch (packet->format) {
-        case PACKET_WMBUS_MESSAGE_FORMAT_A:
+        case WMBUS_MODULE_MESSAGE_FORMAT_A:
             payload_tvb = dissect_wmbus_message_format_a(tvb, pinfo, wmbus_tree);
             break;
-        case PACKET_WMBUS_MESSAGE_FORMAT_B:
+        case WMBUS_MODULE_MESSAGE_FORMAT_B:
             payload_tvb = dissect_wmbus_message_format_b(tvb, pinfo, wmbus_tree);
             break;
         default:

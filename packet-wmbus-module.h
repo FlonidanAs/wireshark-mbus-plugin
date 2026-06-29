@@ -16,17 +16,19 @@
 
 #define WMBUS_MODULE_PROTOABBREV   "wmbus_module"
 
-enum {
-    PACKET_WMBUS_MESSAGE_M2O_MODE_C,
-    PACKET_WMBUS_MESSAGE_M2O_MODE_T,
-    PACKET_WMBUS_MESSAGE_O2M_MODE_C,
-    PACKET_WMBUS_MESSAGE_O2M_MODE_T
-};
+#define wmbus_module_message_modes_VALUE_STRING_LIST(XXX)       \
+    XXX(WMBUS_MODULE_MESSAGE_MODE_M2O_MODE_C, 0, "M2O Mode C")  \
+    XXX(WMBUS_MODULE_MESSAGE_MODE_M2O_MODE_T, 1, "M2O Mode T")  \
+    XXX(WMBUS_MODULE_MESSAGE_MODE_O2M_MODE_C, 2, "O2M Mode C")  \
+    XXX(WMBUS_MODULE_MESSAGE_MODE_O2M_MODE_T, 3, "O2M Mode T")
 
-enum {
-    PACKET_WMBUS_MESSAGE_FORMAT_A,
-    PACKET_WMBUS_MESSAGE_FORMAT_B
-};
+VALUE_STRING_ENUM(wmbus_module_message_modes);
+
+#define wmbus_module_message_formats_VALUE_STRING_LIST(XXX)     \
+    XXX(WMBUS_MODULE_MESSAGE_FORMAT_A, 0, "Format A")           \
+    XXX(WMBUS_MODULE_MESSAGE_FORMAT_B, 1, "Format B")
+
+VALUE_STRING_ENUM(wmbus_module_message_formats);
 
 typedef struct {
     uint8_t mode;

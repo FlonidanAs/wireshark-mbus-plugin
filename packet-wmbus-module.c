@@ -47,6 +47,25 @@ static int hf_wmbus_module_header_air_time;
 static int ett_wmbus_module;
 static int ett_wmbus_module_header;
 
+#define wmbus_module_message_status_VALUE_STRING_LIST(XXX)                              \
+    XXX(WMBUS_MODULE_MESSAGE_STATUS_SUCCESS, 0, "Success")                              \
+    XXX(WMBUS_MODULE_MESSAGE_STATUS_SYNC_WORD_TIMEOUT, 1, "Sync Word Timeout")          \
+    XXX(WMBUS_MODULE_MESSAGE_STATUS_SYNC_WORD_INCORRECT, 2, "Sync Word Incorrect")      \
+    XXX(WMBUS_MODULE_MESSAGE_STATUS_DATA_RECEIVE_TIMEOUT, 3, "Data Receive Timeout")    \
+    XXX(WMBUS_MODULE_MESSAGE_STATUS_INVALID_LENGTH_FIELD, 4, "Invalid Length Field")    \
+    XXX(WMBUS_MODULE_MESSAGE_STATUS_INVALID_CRC, 5, "Invalid CRC")                      \
+    XXX(WMBUS_MODULE_MESSAGE_STATUS_PROCESSING_ERROR, 6, "Processing Error")
+
+VALUE_STRING_ENUM(wmbus_module_message_status);
+VALUE_STRING_ARRAY(wmbus_module_message_status);
+static value_string_ext wmbus_module_message_status_ext = VALUE_STRING_EXT_INIT(wmbus_module_message_status);
+
+VALUE_STRING_ARRAY(wmbus_module_message_modes);
+static value_string_ext wmbus_module_message_modes_ext = VALUE_STRING_EXT_INIT(wmbus_module_message_modes);
+
+VALUE_STRING_ARRAY(wmbus_module_message_formats);
+static value_string_ext wmbus_module_message_formats_ext = VALUE_STRING_EXT_INIT(wmbus_module_message_formats);
+
 /**
  *This function manages wmbus module frame
  *
@@ -140,22 +159,22 @@ proto_register_wmbus_module(void)
           { "Payload Length", "wmbus_module.header.payload_length", FT_UINT32, BASE_DEC, NULL,
             0x00, NULL, HFILL } },
         { &hf_wmbus_module_header_status,
-          { "Status", "wmbus_module.header.status", FT_UINT8, BASE_DEC, NULL,
+          { "Status", "wmbus_module.header.status", FT_UINT8, BASE_DEC | BASE_EXT_STRING, &wmbus_module_message_status_ext,
             0x00, NULL, HFILL } },
         { &hf_wmbus_module_header_mode,
-          { "Message Mode", "wmbus_module.header.mode", FT_UINT8, BASE_HEX, NULL,
+          { "Message Mode", "wmbus_module.header.mode", FT_UINT8, BASE_HEX | BASE_EXT_STRING, &wmbus_module_message_modes_ext,
             0x00, NULL, HFILL } },
         { &hf_wmbus_module_header_format,
-          { "Message Format", "wmbus_module.header.format", FT_UINT8, BASE_HEX, NULL,
+          { "Message Format", "wmbus_module.header.format", FT_UINT8, BASE_HEX | BASE_EXT_STRING, &wmbus_module_message_formats_ext,
             0x00, NULL, HFILL } },
         { &hf_wmbus_module_header_rssi,
           { "RSSI", "wmbus_module.header.rssi", FT_INT8, BASE_DEC, NULL,
             0x00, NULL, HFILL } },
         { &hf_wmbus_module_header_timestamp,
-          { "Timestamp", "wmbus_module.header.timestamp", FT_UINT64, BASE_DEC|BASE_UNIT_STRING, UNS(&my_units_microseconds),
+          { "Timestamp", "wmbus_module.header.timestamp", FT_UINT64, BASE_DEC | BASE_UNIT_STRING, UNS(&my_units_microseconds),
             0x00, NULL, HFILL } },
         { &hf_wmbus_module_header_air_time,
-          { "Air time", "wmbus_module.header.air_time", FT_UINT32, BASE_DEC|BASE_UNIT_STRING, UNS(&my_units_microseconds),
+          { "Air time", "wmbus_module.header.air_time", FT_UINT32, BASE_DEC | BASE_UNIT_STRING, UNS(&my_units_microseconds),
             0x00, NULL, HFILL } }
     };
 
