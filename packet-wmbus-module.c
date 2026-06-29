@@ -14,6 +14,7 @@
 #include <epan/prefs.h>
 #include <epan/unit_strings.h>
 #include <wsutil/utf8_entities.h>
+#include "packet-wmbus-module.h"
 #include "packet-mbus.h"
 #include "packet-wmbus.h"
 
@@ -55,14 +56,10 @@ static int ett_wmbus_module_header;
  *@param offset pointer to offset from caller
 */
 static tvbuff_t*
-dissect_wmbus_module_frame(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int *offset, wmbus_message_info_t* wmbus_message_info)
+dissect_wmbus_module_frame(tvbuff_t *tvb, proto_tree *tree, int *offset, wmbus_module_packet_t* packet)
 {
-    uint32_t data_length;
-    proto_tree* header_tree;
-    col_set_str(pinfo->cinfo, COL_INFO, "WMBus Module Frame");
-
     // Header
-    header_tree = proto_tree_add_subtree(tree, tvb, *offset, 28, ett_wmbus_module_header, NULL, "Header");
+    proto_tree* header_tree = proto_tree_add_subtree(tree, tvb, *offset, 28, ett_wmbus_module_header, NULL, "Header");
 
     proto_tree_add_item(header_tree, hf_wmbus_module_header_command_id, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
     *offset += 4;
@@ -70,27 +67,29 @@ dissect_wmbus_module_frame(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, 
     proto_tree_add_item(header_tree, hf_wmbus_module_header_sequence_number, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
     *offset += 4;
 
-    data_length = tvb_get_uint32(tvb, *offset, ENC_LITTLE_ENDIAN);
+    uint32_t data_length = tvb_get_uint32(tvb, *offset, ENC_LITTLE_ENDIAN);
     proto_tree_add_item(header_tree, hf_wmbus_module_header_payload_length, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
     *offset += 4;
 
     proto_tree_add_item(header_tree, hf_wmbus_module_header_status, tvb, *offset, 1, ENC_NA);
     *offset += 1;
 
-    wmbus_message_info->mode = tvb_get_uint8(tvb, *offset);
+    packet->mode = tvb_get_uint8(tvb, *offset);
     proto_tree_add_item(header_tree, hf_wmbus_module_header_mode, tvb, *offset, 1, ENC_NA);  //TODO Create enum for mode
     *offset += 1;
 
-    wmbus_message_info->format = tvb_get_uint8(tvb, *offset);
+    packet->format = tvb_get_uint8(tvb, *offset);
     proto_tree_add_item(header_tree, hf_wmbus_module_header_format, tvb, *offset, 1, ENC_NA); //TODO Create enum for format
     *offset += 1;
 
     proto_tree_add_item(header_tree, hf_wmbus_module_header_rssi, tvb, *offset, 1, ENC_NA);
     *offset += 1;
 
+    packet->synctime = tvb_get_uint64(tvb, *offset, ENC_LITTLE_ENDIAN);
     proto_tree_add_item(header_tree, hf_wmbus_module_header_timestamp, tvb, *offset, 8, ENC_LITTLE_ENDIAN);
     *offset += 8;
 
+    packet->airtime = tvb_get_uint32(tvb, *offset, ENC_LITTLE_ENDIAN);
     proto_tree_add_item(header_tree, hf_wmbus_module_header_air_time, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
     *offset += 4;
 
@@ -115,10 +114,10 @@ dissect_wmbus_module(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *
 
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "WMBus Module");
 
-    wmbus_message_info_t wmbus_message_info;
-    tvbuff_t* wmbus_tvb = dissect_wmbus_module_frame(tvb, pinfo, mbus_tree, &offset, &wmbus_message_info);
+    wmbus_module_packet_t wmbus_module_packet;
+    tvbuff_t* wmbus_tvb = dissect_wmbus_module_frame(tvb, mbus_tree, &offset, &wmbus_module_packet);
     if (wmbus_tvb != NULL) {
-        call_dissector_with_data(wmbus_handle, wmbus_tvb, pinfo, tree, &wmbus_message_info);
+        call_dissector_with_data(wmbus_handle, wmbus_tvb, pinfo, tree, &wmbus_module_packet);
     }
 
     return tvb_captured_length(tvb);
@@ -166,12 +165,12 @@ proto_register_wmbus_module(void)
         &ett_wmbus_module_header
     };
 
-    proto_wmbus_module = proto_register_protocol("WMBus Module", "WMBus Module", "wmbus_module");
+    proto_wmbus_module = proto_register_protocol("WMBus Module", "WMBus Module", WMBUS_MODULE_PROTOABBREV);
     proto_register_field_array(proto_wmbus_module, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
 
     /* Register dissector */
-    wmbus_module_handle = register_dissector("wmbus_module", dissect_wmbus_module, proto_wmbus_module);
+    wmbus_module_handle = register_dissector(WMBUS_MODULE_PROTOABBREV, dissect_wmbus_module, proto_wmbus_module);
 }
 
 void

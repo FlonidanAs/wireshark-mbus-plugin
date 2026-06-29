@@ -12,7 +12,9 @@
 #include "config.h"
 #include <epan/packet.h>
 #include <epan/prefs.h>
+#include <epan/proto_data.h>
 #include "packet-wmbus.h"
+#include "packet-wmbus-module.h"
 #include "packet-mbus.h"
 #include "packet-mbus-common.h"
 
@@ -41,6 +43,8 @@ static int hf_wmbus_manufacturer;
 static int hf_wmbus_id_number;
 static int hf_wmbus_version;
 static int hf_wmbus_device_type;
+static int hf_wmbus_response_time;
+static int hf_wmbus_response_to_frame;
 
 /* Initialize the subtree pointers */
 #define WMBUS_NUM_INDIVIDUAL_ETT        2
@@ -50,6 +54,98 @@ static int hf_wmbus_device_type;
 static int ett_wmbus;
 static int ett_wmbus_dll;
 static int ett_wmbus_data_blocks[WMBUS_NUM_DATA_BLOCKS_ETT];
+
+static wmem_tree_t* transaction_unmatched_mbus = NULL;
+static wmem_tree_t* transaction_matched_mbus = NULL;
+
+typedef struct {
+    uint32_t m2o_frame;
+    uint64_t m2o_end_time;
+    uint32_t o2m_frame;
+} wmbus_transaction_t;
+
+static void create_address_key(char address_key[32], const char* address, uint32_t frame)
+{
+    snprintf(address_key, 32, "%s_%u", address, frame);
+}
+
+static wmbus_transaction_t* try_find_transaction(packet_info *pinfo, const mbus_packet_info_t* mbus_info, const char* frame_key)
+{
+    // Have we already matched it and moved it to the matched list? If so, return it.
+    wmbus_transaction_t* transaction = (wmbus_transaction_t*)wmem_tree_lookup_string(transaction_matched_mbus, frame_key, 0);
+    if (transaction != NULL) {
+        return transaction;
+    }
+
+    char dst_address[32];
+    mbus_get_dst_address_from_info(mbus_info, dst_address, sizeof(dst_address));
+
+    // If not, try to find it in the unmatched list.
+    // Cap the search to 100 frames back to avoid searching too far back in time.
+    for (uint32_t i = 1; i < 100; i++) {
+        if (pinfo->num < i) {
+            // Avoid underflow
+            break;
+        }
+
+        char address_key[32];
+        create_address_key(address_key, dst_address, pinfo->num - i);
+        wmbus_transaction_t* transaction = (wmbus_transaction_t*)wmem_tree_lookup_string(transaction_unmatched_mbus, address_key, 0);
+        if (transaction != NULL) {
+            // Remove the transaction from the unmatched list and add it to the matched list to avoid matching it again in the future.
+            transaction->o2m_frame = pinfo->num;
+            wmem_tree_remove_string(transaction_unmatched_mbus, address_key, 0);
+            wmem_tree_insert_string(transaction_matched_mbus, frame_key, transaction, 0);
+            return transaction;
+        }
+    }
+
+    // If we didn't find it in either list, return NULL.
+    return NULL;
+}
+
+static void wmbus_add_check_response_time(packet_info *pinfo, proto_tree *tree, const mbus_packet_info_t* mbus_info, const wmbus_module_packet_t* packet)
+{
+    char address_str[32];
+    mbus_get_src_address_from_info(mbus_info, address_str, sizeof(address_str));
+
+    char frame_key[32];
+    create_address_key(frame_key, address_str, pinfo->num);
+
+    if (mbus_is_msg_from_meter(mbus_info->cfield)) {
+        if (!PINFO_FD_VISITED(pinfo)) {
+            // Insert a new transaction into the unmatched list as a unique entry by using the address + frame number as the key.
+            // If we only used the address it would require that the messages was always visited in order, which is not guaranteed.
+            wmbus_transaction_t* transaction = wmem_new0(wmem_file_scope(), wmbus_transaction_t);
+            transaction->m2o_frame = pinfo->num;
+            transaction->m2o_end_time = packet->synctime + packet->airtime;
+            wmem_tree_insert_string(transaction_unmatched_mbus, frame_key, transaction, 0);
+        }
+    }
+    else {
+        wmbus_transaction_t* transaction = try_find_transaction(pinfo, mbus_info, frame_key);
+        if (transaction != NULL) {
+            // Calculate response time
+            uint64_t response_time_us = packet->synctime - transaction->m2o_end_time;
+
+            // Response must be less than 2 seconds, otherwise we consider it a timeout (not a match).
+            const uint64_t mbus_transaction_timeout_us = 2 * 1000000;
+            if (response_time_us > mbus_transaction_timeout_us) {
+                return;
+            }
+
+            nstime_t response_time;
+            response_time.secs = response_time_us / 1000000;
+            response_time.nsecs = (response_time_us % 1000000) * 1000;
+
+            proto_item* response_time_item = proto_tree_add_time(tree, hf_wmbus_response_time, NULL, 0, 0, &response_time);
+            proto_item_set_generated(response_time_item);
+
+            proto_item* response_to_frame_item = proto_tree_add_uint(tree, hf_wmbus_response_to_frame, NULL, 0, 0, transaction->m2o_frame);
+            proto_item_set_generated(response_to_frame_item);
+        }
+    }
+}
 
 static tvbuff_t*
 dissect_wmbus_message_format_b(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
@@ -170,30 +266,16 @@ dissect_wmbus_message_format_a(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
 }
 
 static void
-dissect_wmbus_frame(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, const wmbus_message_info_t* wmbus_message_info)
+dissect_wmbus_frame(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, const wmbus_module_packet_t* packet)
 {
-    mbus_packet_info_t mbus_info;
-    memset(&mbus_info, 0, sizeof(mbus_info));
-    mbus_info.wireless = true;
+    mbus_packet_info_t* mbus_info = p_get_proto_data(wmem_file_scope(), pinfo, proto_wmbus, 0);
+    if (!PINFO_FD_VISITED(pinfo) || (mbus_info == NULL)) {
+        mbus_info = wmem_new0(wmem_file_scope(), mbus_packet_info_t);
+        p_set_proto_data(wmem_file_scope(), pinfo, proto_wmbus, 0, mbus_info);
+    }
+    mbus_info->wireless = true;
 
     int offset = 0;
-
-    switch (wmbus_message_info->mode) {
-        case PACKET_WMBUS_MESSAGE_M2O_MODE_C:
-            col_set_str(pinfo->cinfo, COL_INFO, "M2O Mode C");
-            break;
-        case PACKET_WMBUS_MESSAGE_M2O_MODE_T:
-            col_set_str(pinfo->cinfo, COL_INFO, "M2O Mode T");
-            break;
-        case PACKET_WMBUS_MESSAGE_O2M_MODE_C:
-            col_set_str(pinfo->cinfo, COL_INFO, "O2M Mode C");
-            break;
-        case PACKET_WMBUS_MESSAGE_O2M_MODE_T:
-            col_set_str(pinfo->cinfo, COL_INFO, "O2M Mode T");
-            break;
-        default:
-            break;
-    }
 
     /* Add Link Layer subtree */
     proto_tree* link_layer_tree = proto_tree_add_subtree(tree, tvb, offset, -1, ett_wmbus_dll, NULL, "WMBus Data Link Layer");
@@ -203,35 +285,46 @@ dissect_wmbus_frame(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, const w
     offset += 1;
 
     /* CField */
-    mbus_info.cfield = mbus_dissect_cfield(tvb, pinfo, link_layer_tree, &offset);
+    uint8_t cfield = mbus_dissect_cfield(tvb, pinfo, link_layer_tree, &offset);
 
     /* Manufacturer */
-    mbus_info.security_info.manufacturer = tvb_get_uint16(tvb, offset, ENC_LITTLE_ENDIAN);
+    uint16_t manufacturer = tvb_get_uint16(tvb, offset, ENC_LITTLE_ENDIAN);
     proto_tree_add_item(link_layer_tree, hf_wmbus_manufacturer, tvb, offset, 2, ENC_LITTLE_ENDIAN);
     offset += 2;
 
     /* Device Id (same as Identification Number) */
-    mbus_info.security_info.identification_number = tvb_get_uint32(tvb, offset, ENC_LITTLE_ENDIAN);
+    uint32_t device_id = tvb_get_uint32(tvb, offset, ENC_LITTLE_ENDIAN);
     proto_tree_add_item(link_layer_tree, hf_wmbus_id_number, tvb, offset, 4, ENC_LITTLE_ENDIAN);
     offset += 4;
 
     /* Version */
-    mbus_info.security_info.version = tvb_get_uint8(tvb, offset);
+    uint8_t version = tvb_get_uint8(tvb, offset);
     proto_tree_add_item(link_layer_tree, hf_wmbus_version, tvb, offset, 1, ENC_NA);
     offset += 1;
 
     /* Device type */
-    mbus_info.security_info.device = tvb_get_uint8(tvb, offset);
+    uint8_t device_type = tvb_get_uint8(tvb, offset);
     proto_tree_add_item(link_layer_tree, hf_wmbus_device_type, tvb, offset, 1, ENC_NA);
     offset += 1;
 
-    mbus_info.security_info.fields_present = true;
+    /* Only set below values on first visit. They might have been updated in previous dissections */
+    if (!PINFO_FD_VISITED(pinfo)) {
+        mbus_info->cfield = cfield;
+        mbus_info->security_info.manufacturer = manufacturer;
+        mbus_info->security_info.identification_number = device_id;
+        mbus_info->security_info.version = version;
+        mbus_info->security_info.device = device_type;
+        mbus_info->security_info.fields_present = true;
+    }
 
     /* Set end of link layer tree */
     proto_item_set_end(proto_tree_get_parent(link_layer_tree), tvb, offset);
 
     /* Set address information */
-    mbus_set_address_from_info(pinfo, &mbus_info);
+    mbus_set_address_from_info(pinfo, mbus_info);
+
+    /* Check response time */
+    wmbus_add_check_response_time(pinfo, link_layer_tree, mbus_info, packet);
 
     /* Call ELL, AFL or TPL dissector. Depends on the CI Field */
     if (tvb_reported_length_remaining(tvb, offset) > 0) {
@@ -239,13 +332,13 @@ dissect_wmbus_frame(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, const w
 
         tvbuff_t* new_tvb = tvb_new_subset_length(tvb, offset, tvb_reported_length_remaining(tvb, offset));
         if (mbus_is_ell_ci_field(cifield)) {
-            call_dissector_with_data(mbus_ell_handle, new_tvb, pinfo, proto_tree_get_root(tree), &mbus_info);
+            call_dissector_with_data(mbus_ell_handle, new_tvb, pinfo, proto_tree_get_root(tree), mbus_info);
         }
         else if (mbus_is_afl_ci_field(cifield)) {
-            call_dissector_with_data(mbus_afl_handle, new_tvb, pinfo, proto_tree_get_root(tree), &mbus_info);
+            call_dissector_with_data(mbus_afl_handle, new_tvb, pinfo, proto_tree_get_root(tree), mbus_info);
         }
         else {
-            call_dissector_with_data(mbus_tpl_handle, new_tvb, pinfo, proto_tree_get_root(tree), &mbus_info);
+            call_dissector_with_data(mbus_tpl_handle, new_tvb, pinfo, proto_tree_get_root(tree), mbus_info);
         }
     }
 } /*dissect_wmbus_frame*/
@@ -257,7 +350,7 @@ dissect_wmbus(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
     if (data == NULL) {
         return 0;
     }
-    wmbus_message_info_t* wmbus_message_info = (wmbus_message_info_t*)data;
+    wmbus_module_packet_t* packet = (wmbus_module_packet_t*)data;
 
     /* Create the protocol tree */
     proto_item* proto_root = proto_tree_add_protocol_format(tree, proto_wmbus, tvb, 0, tvb_captured_length(tvb), "WMBus");
@@ -268,7 +361,7 @@ dissect_wmbus(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
 
     tvbuff_t* payload_tvb;
 
-    switch (wmbus_message_info->format) {
+    switch (packet->format) {
         case PACKET_WMBUS_MESSAGE_FORMAT_A:
             payload_tvb = dissect_wmbus_message_format_a(tvb, pinfo, wmbus_tree);
             break;
@@ -282,7 +375,7 @@ dissect_wmbus(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
     }
 
     if (payload_tvb != NULL) {
-        dissect_wmbus_frame(payload_tvb, pinfo, tree, wmbus_message_info);
+        dissect_wmbus_frame(payload_tvb, pinfo, tree, packet);
     }
 
     return tvb_captured_length(tvb);
@@ -313,9 +406,15 @@ proto_register_wmbus(void)
         { &hf_wmbus_device_type,
             { "Device Type", "wmbus.dll.device_type", FT_UINT8, BASE_HEX, NULL,
               0x00, NULL, HFILL } },
+        { &hf_wmbus_response_time,
+            { "Response Time", "wmbus.response_time", FT_RELATIVE_TIME, BASE_NONE, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_wmbus_response_to_frame,
+            { "Response To Frame", "wmbus.response_to_frame", FT_FRAMENUM, BASE_NONE, NULL,
+               0x00, NULL, HFILL } },
     };
 
-    /* MBus subtrees */
+    /* WMBus subtrees */
     int *ett[WMBUS_NUM_TOTAL_ETT];
 
     ett[0] = &ett_wmbus;
@@ -323,7 +422,7 @@ proto_register_wmbus(void)
 
     size_t j = WMBUS_NUM_INDIVIDUAL_ETT;
 
-    /* Initialize mbus application block subtrees */
+    /* Initialize wmbus block subtrees */
     for (size_t i = 0; i < WMBUS_NUM_DATA_BLOCKS_ETT; i++, j++) {
         ett[j] = &ett_wmbus_data_blocks[i];
     }
@@ -331,6 +430,9 @@ proto_register_wmbus(void)
     proto_wmbus = proto_register_protocol("WMBus Protocol", "WMBus", WMBUS_PROTOABBREV);
     proto_register_field_array(proto_wmbus, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
+
+    transaction_unmatched_mbus = wmem_tree_new_autoreset(wmem_epan_scope(), wmem_file_scope());
+    transaction_matched_mbus = wmem_tree_new_autoreset(wmem_epan_scope(), wmem_file_scope());
 
     /* Register dissector */
     wmbus_handle = register_dissector(WMBUS_PROTOABBREV, dissect_wmbus, proto_wmbus);

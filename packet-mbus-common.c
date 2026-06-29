@@ -88,7 +88,7 @@ void mbus_decode_manufacturer_id(char *s, uint16_t value)
     snprintf(s, ITEM_LABEL_LENGTH, "0x%4X [%s]", value, letters);
 }
 
-static bool is_msg_from_meter(uint8_t cfield)
+bool mbus_is_msg_from_meter(uint8_t cfield)
 {
     bool direction_bit_set = (cfield & MBUS_C_FIELD_DIR_MASK) != 0U;
     uint8_t function = cfield & MBUS_C_FIELD_FUNC_MASK;
@@ -117,34 +117,50 @@ static bool is_msg_from_meter(uint8_t cfield)
     return msg_from_meter;
 }
 
-void mbus_set_address(packet_info *pinfo, uint8_t cfield, const char* address)
+static void create_address_string(const mbus_packet_info_t* packet_info, char* buffer, size_t buffer_size)
 {
-    char* src_addr;
-    char* dst_addr;
-    if (is_msg_from_meter(cfield)) {
-        if (address == NULL) {
-            src_addr = wmem_strdup_printf(pinfo->pool, "%c", 'M');
-            dst_addr = wmem_strdup_printf(pinfo->pool, "%c", 'O');
-        }
-        else {
-            src_addr = wmem_strdup_printf(pinfo->pool, "%c:%s", 'M', address);
-            dst_addr = wmem_strdup_printf(pinfo->pool, "%c:%s", 'O', address);
-        }
+    char manufacturer_str[4];
+    mbus_manufacturer_id_to_string(manufacturer_str, sizeof(manufacturer_str), packet_info->security_info.manufacturer);
+    snprintf(buffer, buffer_size, "%s-%08x-%02x-%02x", manufacturer_str, packet_info->security_info.identification_number,
+             packet_info->security_info.version, packet_info->security_info.device);
+}
+
+static void format_prefixed_address(char prefix, const char* addr,
+                                    char* buffer, size_t buffer_size)
+{
+    if (addr == NULL || addr[0] == '\0') {
+        snprintf(buffer, buffer_size, "%c", prefix);
     }
     else {
-        if (address == NULL) {
-            src_addr = wmem_strdup_printf(pinfo->pool, "%c", 'O');
-            dst_addr = wmem_strdup_printf(pinfo->pool, "%c", 'M');
-        }
-        else {
-            src_addr = wmem_strdup_printf(pinfo->pool, "%c:%s", 'O', address);
-            dst_addr = wmem_strdup_printf(pinfo->pool, "%c:%s", 'M', address);
-        }
+        snprintf(buffer, buffer_size, "%c:%s", prefix, addr);
     }
+}
 
-    set_address(&pinfo->dl_dst, AT_STRINGZ, (int)strlen(dst_addr) + 1, dst_addr);
+static char get_src_prefix(uint8_t cfield)
+{
+    return mbus_is_msg_from_meter(cfield) ? 'M' : 'O';
+}
+
+static char get_dst_prefix(uint8_t cfield)
+{
+    return mbus_is_msg_from_meter(cfield) ? 'O' : 'M';
+}
+
+void mbus_set_address(packet_info *pinfo, uint8_t cfield, const char* address)
+{
+    char src_addr[ITEM_LABEL_LENGTH];
+    char dst_addr[ITEM_LABEL_LENGTH];
+
+    format_prefixed_address(get_src_prefix(cfield), address, src_addr, sizeof(src_addr));
+    format_prefixed_address(get_dst_prefix(cfield), address, dst_addr, sizeof(dst_addr));
+
+    char* src_addr_wmem = wmem_strdup_printf(pinfo->pool, "%s", src_addr);
+    char* dst_addr_wmem = wmem_strdup_printf(pinfo->pool, "%s", dst_addr);
+
+    set_address(&pinfo->dl_dst, AT_STRINGZ, (int)strlen(dst_addr_wmem) + 1, dst_addr_wmem);
     copy_address_shallow(&pinfo->dst, &pinfo->dl_dst);
-    set_address(&pinfo->dl_src, AT_STRINGZ, (int)strlen(src_addr) + 1, src_addr);
+
+    set_address(&pinfo->dl_src, AT_STRINGZ, (int)strlen(src_addr_wmem) + 1, src_addr_wmem);
     copy_address_shallow(&pinfo->src, &pinfo->dl_src);
 
     // Set source and destination port. This is important for conversations when MBus is encapsulated in another protocol (e.g. TCP or UDP)
@@ -154,18 +170,23 @@ void mbus_set_address(packet_info *pinfo, uint8_t cfield, const char* address)
     pinfo->destport = 0;
 }
 
-static void create_address_string(uint16_t manufacturer, uint32_t id, uint8_t version, uint8_t device, char* buffer, size_t buffer_size)
-{
-    char manufacturer_str[4];
-    mbus_manufacturer_id_to_string(manufacturer_str, sizeof(manufacturer_str), manufacturer);
-    snprintf(buffer, buffer_size, "%s-%08x-%02x-%02x", manufacturer_str, id, version, device);
-}
-
-void mbus_set_address_from_info(packet_info *pinfo, mbus_packet_info_t* packet_info)
+void mbus_set_address_from_info(packet_info *pinfo, const mbus_packet_info_t* packet_info)
 {
     char address_str[ITEM_LABEL_LENGTH];
-    create_address_string(packet_info->security_info.manufacturer, packet_info->security_info.identification_number,
-                          packet_info->security_info.version, packet_info->security_info.device,
-                          address_str, sizeof(address_str));
+    create_address_string(packet_info, address_str, sizeof(address_str));
     mbus_set_address(pinfo, packet_info->cfield, address_str);
+}
+
+void mbus_get_src_address_from_info(const mbus_packet_info_t* packet_info, char* buffer, size_t buffer_size)
+{
+    char addr[ITEM_LABEL_LENGTH];
+    create_address_string(packet_info, addr, sizeof(addr));
+    format_prefixed_address(get_src_prefix(packet_info->cfield), addr, buffer, buffer_size);
+}
+
+void mbus_get_dst_address_from_info(const mbus_packet_info_t* packet_info, char* buffer, size_t buffer_size)
+{
+    char addr[ITEM_LABEL_LENGTH];
+    create_address_string(packet_info, addr, sizeof(addr));
+    format_prefixed_address(get_dst_prefix(packet_info->cfield), addr, buffer, buffer_size);
 }

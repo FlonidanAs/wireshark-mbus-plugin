@@ -14,6 +14,7 @@
 #include <epan/packet.h>
 #include "packet-mbus-common.h"
 #include "packet-mbus-security.h"
+#include "packet-wmbus.h"
 
 enum {
     TPL_HEADER_BLANK,
@@ -137,24 +138,17 @@ static int* const cifield_dlms_flags[] = {
     NULL
 };
 
-static void dissect_mbus_common_layers(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, mbus_packet_info_t* mbus_info)
+static void dissect_mbus_common_layers(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, mbus_packet_info_t* mbus_packet)
 {
     int offset = 0;
-    mbus_packet_info_t mbus_packet_info;
-    if (mbus_info != NULL) {
-        memcpy(&mbus_packet_info, mbus_info, sizeof(mbus_packet_info_t));
-    }
-    else {
-        memset(&mbus_packet_info, 0, sizeof(mbus_packet_info_t));
-    }
 
     /* Create the protocol tree */
     proto_item* proto_root = proto_tree_add_protocol_format(tree, proto_mbus_tpl, tvb, offset, -1, "MBus Transport Layer");
     proto_tree* transport_layer_tree = proto_item_add_subtree(proto_root, ett_mbus_tpl);
 
     /* CIField */
-    mbus_packet_info.ciField = tvb_get_uint8(tvb, offset);
-    if (mbus_is_dlms_ci_field(mbus_packet_info.ciField)) {
+    mbus_packet->ciField = tvb_get_uint8(tvb, offset);
+    if (mbus_is_dlms_ci_field(mbus_packet->ciField)) {
         proto_tree_add_bitmask(transport_layer_tree, tvb, offset, hf_mbus_cifield_dlms, ett_mbus_cifield_dlms, cifield_dlms_flags, ENC_LITTLE_ENDIAN);
         offset += 1;
         tvbuff_t* payload_tvb = tvb_new_subset_remaining(tvb, offset);
@@ -169,79 +163,75 @@ static void dissect_mbus_common_layers(tvbuff_t *tvb, packet_info *pinfo, proto_
     }
 
     for (size_t i = 0; i < array_length(ci_field_tpl_header); i++) {
-        if (ci_field_tpl_header[i].cifield == mbus_packet_info.ciField) {
+        if (ci_field_tpl_header[i].cifield == mbus_packet->ciField) {
             switch (ci_field_tpl_header[i].tpl_header) {
                 case TPL_HEADER_BLANK:
                 case TPL_HEADER_NONE:
-                    mbus_packet_info.security_info.configField = 0;
-                    if (mbus_info == NULL) {
-                        mbus_packet_info.security_info.fields_present = false;
-                    }
+                    mbus_packet->security_info.configField = 0;
+                    mbus_packet->security_info.fields_present = false;
                     break;
                 case TPL_HEADER_SHORT:
                     proto_tree_add_item(transport_layer_tree, hf_mbus_access_counter, tvb, offset, 1, ENC_NA);
                     offset += 1;
                     proto_tree_add_item(transport_layer_tree, hf_mbus_status, tvb, offset, 1, ENC_NA);
                     offset += 1;
-                    mbus_packet_info.security_info.configField = tvb_get_uint16(tvb, offset, ENC_LITTLE_ENDIAN);
+                    mbus_packet->security_info.configField = tvb_get_uint16(tvb, offset, ENC_LITTLE_ENDIAN);
                     proto_tree_add_item(transport_layer_tree, hf_mbus_config, tvb, offset, 2, ENC_LITTLE_ENDIAN);
                     offset += 2;
-                    switch ((mbus_packet_info.security_info.configField & MBUS_CONFIG_MODE_MASK) >> MBUS_CONFIG_MODE_SHIFT) {
+                    switch ((mbus_packet->security_info.configField & MBUS_CONFIG_MODE_MASK) >> MBUS_CONFIG_MODE_SHIFT) {
                         case 7:
                             proto_tree_add_item(transport_layer_tree, hf_mbus_config_ext_mode7, tvb, offset, 1, ENC_NA);
                             offset += 1;
                             break;
                         case 13:
-                            mbus_packet_info.security_info.configFieldExtension = tvb_get_uint8(tvb, offset);
+                            mbus_packet->security_info.configFieldExtension = tvb_get_uint8(tvb, offset);
                             proto_tree_add_item(transport_layer_tree, hf_mbus_config_ext_mode13, tvb, offset, 1, ENC_NA);
                             offset += 1;
                             break;
                         default:
                             break;
                     }
-                    if (mbus_info == NULL) {
-                        mbus_packet_info.security_info.fields_present = false;
-                    }
+                    mbus_packet->security_info.fields_present = false;
                     break;
                 case TPL_HEADER_LONG:
-                    mbus_packet_info.security_info.identification_number = tvb_get_uint32(tvb, offset, ENC_LITTLE_ENDIAN);
+                    mbus_packet->security_info.identification_number = tvb_get_uint32(tvb, offset, ENC_LITTLE_ENDIAN);
                     proto_tree_add_item(transport_layer_tree, hf_mbus_id_number, tvb, offset, 4, ENC_LITTLE_ENDIAN);
                     offset += 4;
-                    mbus_packet_info.security_info.manufacturer = tvb_get_uint16(tvb, offset, ENC_LITTLE_ENDIAN);
+                    mbus_packet->security_info.manufacturer = tvb_get_uint16(tvb, offset, ENC_LITTLE_ENDIAN);
                     proto_tree_add_item(transport_layer_tree, hf_mbus_manufacturer, tvb, offset, 2, ENC_LITTLE_ENDIAN);
                     offset += 2;
-                    mbus_packet_info.security_info.version = tvb_get_uint8(tvb, offset);
+                    mbus_packet->security_info.version = tvb_get_uint8(tvb, offset);
                     proto_tree_add_item(transport_layer_tree, hf_mbus_version, tvb, offset, 1, ENC_NA);
                     offset += 1;
-                    mbus_packet_info.security_info.device = tvb_get_uint8(tvb, offset);
+                    mbus_packet->security_info.device = tvb_get_uint8(tvb, offset);
                     proto_tree_add_item(transport_layer_tree, hf_mbus_device_type, tvb, offset, 1, ENC_NA);
                     offset += 1;
                     proto_tree_add_item(transport_layer_tree, hf_mbus_access_counter, tvb, offset, 1, ENC_NA);
                     offset += 1;
                     proto_tree_add_item(transport_layer_tree, hf_mbus_status, tvb, offset, 1, ENC_NA);
                     offset += 1;
-                    mbus_packet_info.security_info.configField = tvb_get_uint16(tvb, offset, ENC_LITTLE_ENDIAN);
+                    mbus_packet->security_info.configField = tvb_get_uint16(tvb, offset, ENC_LITTLE_ENDIAN);
                     proto_tree_add_item(transport_layer_tree, hf_mbus_config, tvb, offset, 2, ENC_LITTLE_ENDIAN);
                     offset += 2;
-                    switch ((mbus_packet_info.security_info.configField & MBUS_CONFIG_MODE_MASK) >> MBUS_CONFIG_MODE_SHIFT) {
+                    switch ((mbus_packet->security_info.configField & MBUS_CONFIG_MODE_MASK) >> MBUS_CONFIG_MODE_SHIFT) {
                         case 7:
                             proto_tree_add_item(transport_layer_tree, hf_mbus_config_ext_mode7, tvb, offset, 1, ENC_NA);
                             offset += 1;
                             break;
                         case 13:
-                            mbus_packet_info.security_info.configFieldExtension = tvb_get_uint8(tvb, offset);
+                            mbus_packet->security_info.configFieldExtension = tvb_get_uint8(tvb, offset);
                             proto_tree_add_item(transport_layer_tree, hf_mbus_config_ext_mode13, tvb, offset, 1, ENC_NA);
                             offset += 1;
                             break;
                         default:
                             break;
                     }
-                    mbus_packet_info.security_info.fields_present = true;
+                    mbus_packet->security_info.fields_present = true;
 
                     // Update address information based on the long header info.
                     // This must only be done for wireless messages to avoid breaking dtls conversation tracking for wired messages.
-                    if (mbus_packet_info.wireless) {
-                        mbus_set_address_from_info(pinfo, &mbus_packet_info);
+                    if (mbus_packet->wireless) {
+                        mbus_set_address_from_info(pinfo, mbus_packet);
                     }
                     break;
                 default:
@@ -257,14 +247,14 @@ static void dissect_mbus_common_layers(tvbuff_t *tvb, packet_info *pinfo, proto_
     if (tvb_reported_length_remaining(tvb, offset) > 0) {
         tvbuff_t* payload_tvb = tvb_new_subset_remaining(tvb, offset);
 
-        if ((mbus_packet_info.security_info.configField & MBUS_CONFIG_MODE_MASK) != 0) {
-            uint16_t encryption_mode = (mbus_packet_info.security_info.configField & MBUS_CONFIG_MODE_MASK) >> MBUS_CONFIG_MODE_SHIFT;
+        if ((mbus_packet->security_info.configField & MBUS_CONFIG_MODE_MASK) != 0) {
+            uint16_t encryption_mode = (mbus_packet->security_info.configField & MBUS_CONFIG_MODE_MASK) >> MBUS_CONFIG_MODE_SHIFT;
             if (encryption_mode == 13) {
                 /* Encryption mode 13 indicates (D)TLS on the application layer.
                  * Do not try to decrypt it here, but instead let the application layer handle it */
             }
             else {
-                payload_tvb = dissect_mbus_secure(payload_tvb, pinfo, transport_layer_tree, 0, &mbus_packet_info.security_info);
+                payload_tvb = dissect_mbus_secure(payload_tvb, pinfo, transport_layer_tree, 0, &mbus_packet->security_info);
                 if (payload_tvb == NULL) {
                     /* If payload_tvb is NULL, then the security decryption failed */
                     return;
@@ -274,13 +264,17 @@ static void dissect_mbus_common_layers(tvbuff_t *tvb, packet_info *pinfo, proto_
 
         /* Call application layer dissector */
         if (tvb_reported_length(payload_tvb) > 0) {
-            call_dissector_with_data(mbus_apl_handle, payload_tvb, pinfo, proto_tree_get_root(tree), &mbus_packet_info);
+            call_dissector_with_data(mbus_apl_handle, payload_tvb, pinfo, proto_tree_get_root(tree), mbus_packet);
         }
     }
 }
 
 static int dissect_mbus_tpl(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 {
+    /* Reject the packet if data is NULL */
+    if (data == NULL) {
+        return 0;
+    }
     dissect_mbus_common_layers(tvb, pinfo, tree, (mbus_packet_info_t*)data);
     return tvb_captured_length(tvb);
 }
