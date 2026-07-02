@@ -35,8 +35,8 @@ void proto_reg_handoff_mbus_afl(void);
 void proto_register_mbus_apl(void);
 void proto_reg_handoff_mbus_apl(void);
 
-void proto_register_mbus_dsmr6(void);
-void proto_reg_handoff_mbus_dsmr6(void);
+void proto_register_dsmr6(void);
+void proto_reg_handoff_dsmr6(void);
 
 void proto_register_mbus_ell(void);
 void proto_reg_handoff_mbus_ell(void);
@@ -71,8 +71,8 @@ plugin_register(void)
     proto_register_plugin(&plug_mbus_apl);
 
     static proto_plugin plug_mbus_dsmr6;
-    plug_mbus_dsmr6.register_protoinfo = proto_register_mbus_dsmr6;
-    plug_mbus_dsmr6.register_handoff = proto_reg_handoff_mbus_dsmr6;
+    plug_mbus_dsmr6.register_protoinfo = proto_register_dsmr6;
+    plug_mbus_dsmr6.register_handoff = proto_reg_handoff_dsmr6;
     proto_register_plugin(&plug_mbus_dsmr6);
 
     static proto_plugin plug_mbus_ell;
