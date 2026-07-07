@@ -118,15 +118,8 @@ bool mbus_is_msg_from_meter(uint8_t cfield)
     return msg_from_meter;
 }
 
-static void create_address_string_from_security_info(const mbus_packet_info_t* packet_info, char* buffer, size_t buffer_size)
+static void create_address_string(const mbus_address_t* address, char* buffer, size_t buffer_size)
 {
-    char manufacturer_str[4];
-    mbus_manufacturer_id_to_string(manufacturer_str, sizeof(manufacturer_str), packet_info->security_info.manufacturer);
-    snprintf(buffer, buffer_size, "%s-%08x-%02x-%02x", manufacturer_str, packet_info->security_info.identification_number,
-             packet_info->security_info.version, packet_info->security_info.device);
-}
-
-static void create_address_string(const mbus_address_t* address, char* buffer, size_t buffer_size) {
     char manufacturer_str[4];
     mbus_manufacturer_id_to_string(manufacturer_str, sizeof(manufacturer_str), address->manufacturer);
     snprintf(buffer, buffer_size, "%s-%08x-%02x-%02x", manufacturer_str, address->identification_number,
