@@ -37,6 +37,7 @@ static int hf_mbus_ell_cc_synchronized;
 static int hf_mbus_ell_cc_response_delay;
 static int hf_mbus_ell_cc_bi_directional;
 static int hf_mbus_ell_acc;
+static int hf_mbus_ell_mafield;
 
 static int ett_mbus_ell;
 static int ett_mbus_ell_cc;
@@ -71,6 +72,20 @@ static void dissect_extended_link_layer_1(tvbuff_t *tvb, packet_info *pinfo _U_,
     *offset += 1;
 }
 
+static void dissect_extended_link_layer_3(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int* offset) {
+    proto_tree_add_item(tree, hf_mbus_ell_cifield, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+
+    proto_tree_add_bitmask(tree, tvb, *offset, hf_mbus_ell_cc, ett_mbus_ell_cc, ell_cc_field_flags, ENC_NA);
+    *offset += 1;
+
+    proto_tree_add_item(tree, hf_mbus_ell_acc, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+
+    proto_tree_add_item(tree, hf_mbus_ell_mafield, tvb, *offset, 8, ENC_NA);
+    *offset += 8;
+}
+
 static int
 dissect_mbus_ell(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 {
@@ -90,7 +105,7 @@ dissect_mbus_ell(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
             offset += 1 + 8;
             break;
         case ExtendedLinkLayer3:
-            offset += 1 + 10;
+            dissect_extended_link_layer_3(tvb, pinfo, mbus_ell_tree, &offset);
             break;
         case ExtendedLinkLayer4:
             offset += 1 + 16;
@@ -149,7 +164,10 @@ proto_register_mbus_ell(void)
               0x80, NULL, HFILL } },
         { &hf_mbus_ell_acc,
             { "Access Number", "mbus.ell.acc", FT_UINT8, BASE_DEC, NULL,
-              0x00, NULL, HFILL } }
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ell_mafield,
+            { "Destination", "mbus.ell.dst", FT_BYTES, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
     };
 
     /* MBus subtrees */
