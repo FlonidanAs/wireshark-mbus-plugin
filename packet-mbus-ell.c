@@ -166,7 +166,7 @@ proto_register_mbus_ell(void)
             { "Access Number", "mbus.ell.acc", FT_UINT8, BASE_DEC, NULL,
               0x00, NULL, HFILL } },
         { &hf_mbus_ell_mafield,
-            { "Destination", "mbus.ell.dst", FT_BYTES, BASE_HEX, NULL,
+            { "Destination", "mbus.ell.dst", FT_BYTES, BASE_NONE, NULL,
               0x00, NULL, HFILL } },
     };
 
