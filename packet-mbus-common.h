@@ -23,11 +23,23 @@
 #define MBUS_PROTOABBREV_DLMS "mbus_dlms"
 
 typedef struct {
+    uint32_t identification_number;
+    uint16_t manufacturer;
+    uint8_t version;
+    uint8_t device_type;
+} mbus_address_t;
+
+typedef struct {
     uint8_t cfield;
     bool wireless;
     struct {
         uint8_t address;
     } wired_info;
+    struct {
+        bool destination_present;
+        mbus_address_t link_layer_address;
+        mbus_address_t destination_address;
+    } wireless_info;
     // The wireless info which is needed is stored in the security info struct
     mbus_secure_ctx_t security_info;
     uint8_t ciField;
@@ -131,11 +143,13 @@ void mbus_decode_manufacturer_id(char *s, uint16_t value);
 
 bool mbus_is_msg_from_meter(uint8_t cfield);
 
-void mbus_set_address(packet_info *pinfo, uint8_t cfield, const char* address);
+void mbus_set_address(packet_info *pinfo, uint8_t cfield, const char* src_address, const char* dst_address);
 void mbus_set_address_from_info(packet_info *pinfo, const mbus_packet_info_t* packet_info);
 
 void mbus_get_src_address_from_info(const mbus_packet_info_t* packet_info, char* buffer, size_t buffer_size);
 void mbus_get_dst_address_from_info(const mbus_packet_info_t* packet_info, char* buffer, size_t buffer_size);
+
+void mbus_set_dtls_conversation(packet_info *pinfo, const mbus_packet_info_t *mbus_info);
 
 #endif /* PACKET_MBUS_COMMON_H */
 

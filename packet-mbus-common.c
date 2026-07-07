@@ -10,6 +10,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 #include "packet-mbus-common.h"
+#include "epan/conversation.h"
 
 VALUE_STRING_ARRAY(mbus_ci_field_names);
 value_string_ext mbus_ci_field_names_ext = VALUE_STRING_EXT_INIT(mbus_ci_field_names);
@@ -117,12 +118,19 @@ bool mbus_is_msg_from_meter(uint8_t cfield)
     return msg_from_meter;
 }
 
-static void create_address_string(const mbus_packet_info_t* packet_info, char* buffer, size_t buffer_size)
+static void create_address_string_from_security_info(const mbus_packet_info_t* packet_info, char* buffer, size_t buffer_size)
 {
     char manufacturer_str[4];
     mbus_manufacturer_id_to_string(manufacturer_str, sizeof(manufacturer_str), packet_info->security_info.manufacturer);
     snprintf(buffer, buffer_size, "%s-%08x-%02x-%02x", manufacturer_str, packet_info->security_info.identification_number,
              packet_info->security_info.version, packet_info->security_info.device);
+}
+
+static void create_address_string(const mbus_address_t* address, char* buffer, size_t buffer_size) {
+    char manufacturer_str[4];
+    mbus_manufacturer_id_to_string(manufacturer_str, sizeof(manufacturer_str), address->manufacturer);
+    snprintf(buffer, buffer_size, "%s-%08x-%02x-%02x", manufacturer_str, address->identification_number,
+             address->version, address->device_type);
 }
 
 static void format_prefixed_address(char prefix, const char* addr,
@@ -146,13 +154,13 @@ static char get_dst_prefix(uint8_t cfield)
     return mbus_is_msg_from_meter(cfield) ? 'O' : 'M';
 }
 
-void mbus_set_address(packet_info *pinfo, uint8_t cfield, const char* address)
+void mbus_set_address(packet_info *pinfo, uint8_t cfield, const char* src_address, const char* dst_address)
 {
     char src_addr[ITEM_LABEL_LENGTH];
     char dst_addr[ITEM_LABEL_LENGTH];
 
-    format_prefixed_address(get_src_prefix(cfield), address, src_addr, sizeof(src_addr));
-    format_prefixed_address(get_dst_prefix(cfield), address, dst_addr, sizeof(dst_addr));
+    format_prefixed_address(get_src_prefix(cfield), src_address, src_addr, sizeof(src_addr));
+    format_prefixed_address(get_dst_prefix(cfield), dst_address, dst_addr, sizeof(dst_addr));
 
     char* src_addr_wmem = wmem_strdup_printf(pinfo->pool, "%s", src_addr);
     char* dst_addr_wmem = wmem_strdup_printf(pinfo->pool, "%s", dst_addr);
@@ -172,21 +180,47 @@ void mbus_set_address(packet_info *pinfo, uint8_t cfield, const char* address)
 
 void mbus_set_address_from_info(packet_info *pinfo, const mbus_packet_info_t* packet_info)
 {
-    char address_str[ITEM_LABEL_LENGTH];
-    create_address_string(packet_info, address_str, sizeof(address_str));
-    mbus_set_address(pinfo, packet_info->cfield, address_str);
+    char src_address_str[ITEM_LABEL_LENGTH];
+    create_address_string(&packet_info->wireless_info.link_layer_address, src_address_str, sizeof(src_address_str));
+
+    char dst_address_str[ITEM_LABEL_LENGTH];
+    create_address_string(&packet_info->wireless_info.destination_address, dst_address_str, sizeof(dst_address_str));
+
+    mbus_set_address(pinfo, packet_info->cfield, src_address_str,
+        packet_info->wireless_info.destination_present ? dst_address_str : NULL);
 }
 
 void mbus_get_src_address_from_info(const mbus_packet_info_t* packet_info, char* buffer, size_t buffer_size)
 {
     char addr[ITEM_LABEL_LENGTH];
-    create_address_string(packet_info, addr, sizeof(addr));
+    create_address_string(&packet_info->wireless_info.link_layer_address, addr, sizeof(addr));
     format_prefixed_address(get_src_prefix(packet_info->cfield), addr, buffer, buffer_size);
 }
 
 void mbus_get_dst_address_from_info(const mbus_packet_info_t* packet_info, char* buffer, size_t buffer_size)
 {
     char addr[ITEM_LABEL_LENGTH];
-    create_address_string(packet_info, addr, sizeof(addr));
+    create_address_string(&packet_info->wireless_info.destination_address, addr, sizeof(addr));
     format_prefixed_address(get_dst_prefix(packet_info->cfield), addr, buffer, buffer_size);
+}
+
+void mbus_set_dtls_conversation(packet_info *pinfo, const mbus_packet_info_t *mbus_info)
+{
+    const mbus_address_t *meter = NULL;
+    if (mbus_is_msg_from_meter(mbus_info->cfield)) {
+        meter = &mbus_info->wireless_info.link_layer_address;
+    }
+    else if (mbus_info->wireless_info.destination_present) {
+        meter = &mbus_info->wireless_info.destination_address;
+    }
+    if (meter == NULL) {
+        return;  // e.g. TlsToDeviceShortHeader: no meter identity in the frame
+    }
+    char meter_str[ITEM_LABEL_LENGTH];
+    create_address_string(meter, meter_str, sizeof(meter_str));   // unprefixed
+    address meter_addr, other_addr;
+    char *meter_wmem = wmem_strdup(pinfo->pool, meter_str);
+    set_address(&meter_addr, AT_STRINGZ, (int)strlen(meter_wmem) + 1, meter_wmem);
+    set_address(&other_addr, AT_STRINGZ, 2, "O");
+    conversation_set_conv_addr_port_endpoints(pinfo, &meter_addr, &other_addr, CONVERSATION_NONE, 0, 0);
 }

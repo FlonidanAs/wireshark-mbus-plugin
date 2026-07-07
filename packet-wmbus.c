@@ -310,6 +310,12 @@ dissect_wmbus_frame(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, const w
     /* Only set below values on first visit. They might have been updated in previous dissections */
     if (!PINFO_FD_VISITED(pinfo)) {
         mbus_info->cfield = cfield;
+        mbus_info->wireless_info.link_layer_address.identification_number = device_id;
+        mbus_info->wireless_info.link_layer_address.manufacturer = manufacturer;
+        mbus_info->wireless_info.link_layer_address.version = version;
+        mbus_info->wireless_info.link_layer_address.device_type = device_type;
+
+        // Keep this to avoid breaking the existing code
         mbus_info->security_info.manufacturer = manufacturer;
         mbus_info->security_info.identification_number = device_id;
         mbus_info->security_info.version = version;
