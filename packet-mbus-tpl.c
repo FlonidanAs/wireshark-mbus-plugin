@@ -228,6 +228,13 @@ static void dissect_mbus_common_layers(tvbuff_t *tvb, packet_info *pinfo, proto_
                     }
                     mbus_packet->security_info.fields_present = true;
 
+                    // Copy the address to the wireless destination
+                    mbus_packet->wireless_info.destination_address.manufacturer = mbus_packet->security_info.manufacturer;
+                    mbus_packet->wireless_info.destination_address.identification_number = mbus_packet->security_info.identification_number;
+                    mbus_packet->wireless_info.destination_address.version = mbus_packet->security_info.version;
+                    mbus_packet->wireless_info.destination_address.device_type = mbus_packet->security_info.device;
+                    mbus_packet->wireless_info.destination_present = true;
+
                     // Update address information based on the long header info.
                     // This must only be done for wireless messages to avoid breaking dtls conversation tracking for wired messages.
                     if (mbus_packet->wireless) {
