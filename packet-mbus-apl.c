@@ -812,7 +812,6 @@ static int dissect_mbus_apl(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 
     if (check_dtls_record(apl_data)) {
         if (dtls_handle != NULL) {
-            mbus_packet_info_t* apl_data = (mbus_packet_info_t*)p_get_proto_data(pinfo->pool, pinfo, proto_mbus_apl, PROTO_DATA_KEY_MBUS_PACKET_INFO);
             mbus_set_dtls_conversation(pinfo, apl_data);
             call_dissector(dtls_handle, tvb, pinfo, proto_tree_get_root(tree));
         }
