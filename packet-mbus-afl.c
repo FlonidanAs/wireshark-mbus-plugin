@@ -111,16 +111,16 @@ generate_mbus_msg_id(const mbus_packet_info_t* mbus_info)
 {
     uint32_t msg_id;
     if (mbus_info->wireless) {
-        msg_id = mbus_info->security_info.identification_number;
-        msg_id ^= mbus_info->security_info.manufacturer;
-        msg_id ^= ((uint32_t)mbus_info->security_info.version << 16);
-        msg_id ^= ((uint32_t)mbus_info->security_info.device << 24);
+        msg_id = mbus_info->wireless_info.link_layer_address.identification_number;
+        msg_id ^= mbus_info->wireless_info.link_layer_address.manufacturer;
+        msg_id ^= ((uint32_t)mbus_info->wireless_info.link_layer_address.version << 16);
+        msg_id ^= ((uint32_t)mbus_info->wireless_info.link_layer_address.device_type << 24);
     }
     else {
         msg_id = mbus_info->wired_info.address;
     }
     msg_id &= 0x7FFFFFFF;
-    msg_id |= (mbus_info->cfield & MBUS_C_FIELD_DIR_MASK) << 31;
+    msg_id |= ((uint32_t)(mbus_info->cfield & MBUS_C_FIELD_DIR_MASK) >> 6) << 31;
     return msg_id;
 }
 
