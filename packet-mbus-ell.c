@@ -197,7 +197,7 @@ proto_register_mbus_ell(void)
             { "Bi-directional", "mbus.ell.cc.b", FT_BOOLEAN, 8, NULL,
               0x80, NULL, HFILL } },
         { &hf_mbus_ell_acc,
-            { "Access Number", "mbus.ell.acc", FT_UINT8, BASE_DEC, NULL,
+            { "Access Number", "mbus.ell.acc", FT_UINT8, BASE_HEX, NULL,
               0x00, NULL, HFILL } },
         { &hf_mbus_ell_mafield,
             { "Destination", "mbus.ell.dst", FT_NONE, BASE_NONE, NULL,
