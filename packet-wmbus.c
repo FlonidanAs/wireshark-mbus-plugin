@@ -373,6 +373,9 @@ dissect_wmbus(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
         case WMBUS_MODULE_MESSAGE_FORMAT_B:
             payload_tvb = dissect_wmbus_message_format_b(tvb, pinfo, wmbus_tree);
             break;
+        case WMBUS_MODULE_MESSAGE_FORMAT_NOFRAME:
+            payload_tvb = tvb;
+            break;
         default:
             // Unknown format
             payload_tvb = NULL;
