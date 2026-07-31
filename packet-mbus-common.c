@@ -197,6 +197,17 @@ void mbus_get_dst_address_from_info(const mbus_packet_info_t* packet_info, char*
     format_prefixed_address(get_dst_prefix(packet_info->cfield), addr, buffer, buffer_size);
 }
 
+const mbus_address_t* mbus_get_meter_identity(const mbus_packet_info_t* mbus_info)
+{
+    if (mbus_is_msg_from_meter(mbus_info->cfield)) {
+        return &mbus_info->wireless_info.link_layer_address;
+    }
+    if (mbus_info->wireless_info.destination_present) {
+        return &mbus_info->wireless_info.destination_address;
+    }
+    return NULL;
+}
+
 void mbus_set_dtls_conversation(packet_info *pinfo, const mbus_packet_info_t *mbus_info)
 {
     address meter_addr, other_addr;
@@ -205,13 +216,7 @@ void mbus_set_dtls_conversation(packet_info *pinfo, const mbus_packet_info_t *mb
         // For wireless use the meter address in combination with the generic O for
         // the other device. This always matches whether the destination device
         // is known from dissection.
-        const mbus_address_t *meter = NULL;
-        if (mbus_is_msg_from_meter(mbus_info->cfield)) {
-            meter = &mbus_info->wireless_info.link_layer_address;
-        }
-        else if (mbus_info->wireless_info.destination_present) {
-            meter = &mbus_info->wireless_info.destination_address;
-        }
+        const mbus_address_t *meter = mbus_get_meter_identity(mbus_info);
         if (meter == NULL) {
             return;  // e.g. TlsToDeviceShortHeader: no meter identity in the frame
         }

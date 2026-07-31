@@ -149,6 +149,10 @@ void mbus_set_address_from_info(packet_info *pinfo, const mbus_packet_info_t* pa
 void mbus_get_src_address_from_info(const mbus_packet_info_t* packet_info, char* buffer, size_t buffer_size);
 void mbus_get_dst_address_from_info(const mbus_packet_info_t* packet_info, char* buffer, size_t buffer_size);
 
+/* Returns the meter identity for a wireless message, or NULL if the frame
+ * doesn't identify the meter (e.g. to-meter with no ELL3/long header). */
+const mbus_address_t* mbus_get_meter_identity(const mbus_packet_info_t* mbus_info);
+
 void mbus_set_dtls_conversation(packet_info *pinfo, const mbus_packet_info_t *mbus_info);
 
 #endif /* PACKET_MBUS_COMMON_H */

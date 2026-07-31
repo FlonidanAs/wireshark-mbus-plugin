@@ -190,7 +190,21 @@ static void dissect_mbus_common_layers(tvbuff_t *tvb, packet_info *pinfo, proto_
                         default:
                             break;
                     }
+                    /* A short header carries no identity itself, but for wireless messages the
+                     * meter identity needed for decryption is known from the link layer address
+                     * (from-meter) or the ELL3 destination (to-meter). Without it, decryption
+                     * falls back to identities learned from decrypted long-header messages. */
                     mbus_packet->security_info.fields_present = false;
+                    if (mbus_packet->wireless) {
+                        const mbus_address_t* meter = mbus_get_meter_identity(mbus_packet);
+                        if (meter != NULL) {
+                            mbus_packet->security_info.identification_number = meter->identification_number;
+                            mbus_packet->security_info.manufacturer = meter->manufacturer;
+                            mbus_packet->security_info.version = meter->version;
+                            mbus_packet->security_info.device = meter->device_type;
+                            mbus_packet->security_info.fields_present = true;
+                        }
+                    }
                     break;
                 case TPL_HEADER_LONG:
                     mbus_packet->security_info.identification_number = tvb_get_uint32(tvb, offset, ENC_LITTLE_ENDIAN);
@@ -227,12 +241,16 @@ static void dissect_mbus_common_layers(tvbuff_t *tvb, packet_info *pinfo, proto_
                     }
                     mbus_packet->security_info.fields_present = true;
 
-                    // Copy the address to the wireless destination
-                    mbus_packet->wireless_info.destination_address.manufacturer = mbus_packet->security_info.manufacturer;
-                    mbus_packet->wireless_info.destination_address.identification_number = mbus_packet->security_info.identification_number;
-                    mbus_packet->wireless_info.destination_address.version = mbus_packet->security_info.version;
-                    mbus_packet->wireless_info.destination_address.device_type = mbus_packet->security_info.device;
-                    mbus_packet->wireless_info.destination_present = true;
+                    // The long header address always identifies the meter. Only for messages
+                    // to the meter is that the destination; for messages from the meter it
+                    // repeats the source and must not be presented as the destination.
+                    if (!mbus_is_msg_from_meter(mbus_packet->cfield)) {
+                        mbus_packet->wireless_info.destination_address.manufacturer = mbus_packet->security_info.manufacturer;
+                        mbus_packet->wireless_info.destination_address.identification_number = mbus_packet->security_info.identification_number;
+                        mbus_packet->wireless_info.destination_address.version = mbus_packet->security_info.version;
+                        mbus_packet->wireless_info.destination_address.device_type = mbus_packet->security_info.device;
+                        mbus_packet->wireless_info.destination_present = true;
+                    }
 
                     // Update address information based on the long header info.
                     // This must only be done for wireless messages to avoid breaking dtls conversation tracking for wired messages.
