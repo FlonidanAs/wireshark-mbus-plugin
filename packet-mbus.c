@@ -9,12 +9,12 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
-#include "config.h"
 #include <epan/expert.h>
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include "packet-mbus.h"
 #include "packet-mbus-common.h"
+
 
 /*************************/
 /* Function Declarations */
@@ -74,6 +74,11 @@ static const value_string mbus_cfield_primary_to_seconday_function_names[] = {
     { 0, NULL }
 };
 
+static const value_string mbus_cfield_primary_to_seconday_function_alternatice_names[] = {
+    { 0x03, "SND_UD2" },
+    { 0, NULL }
+};
+
 /* CField Function */
 static const value_string mbus_cfield_secondary_to_primary_function_names[] = {
     { 0x00, "ACK" },
@@ -107,6 +112,13 @@ uint8_t mbus_dissect_cfield(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
         proto_tree_add_bitmask(tree, tvb, *offset, hf_mbus_cfield, ett_mbus_cfield, cfield_master_to_slave_flags, ENC_NA);
         for (size_t i = 0; i < array_length(mbus_cfield_primary_to_seconday_function_names); i++) {
             if (mbus_cfield_primary_to_seconday_function_names[i].value == (cfield & MBUS_C_FIELD_FUNC_MASK)) {
+                if (mbus_cfield_primary_to_seconday_function_names[i].value == 0x03 && !(cfield & MBUS_C_FIELD_FCV_DFC_MASK)) {
+                    // Special case for SND_UD, as it could be an SND_UD2 depending on the FCB flag
+                    // NEN-EN 13757-4 (2024) states that a SND_UD with a cleared FCV field be called SND_UD2
+                    // Table 34 Function codes of the C-field in messages sent from primary stations
+                    col_append_sep_str(pinfo->cinfo, COL_INFO, NULL, mbus_cfield_primary_to_seconday_function_alternatice_names[0].strptr);
+                    break;
+                }
                 col_append_sep_str(pinfo->cinfo, COL_INFO, NULL, mbus_cfield_primary_to_seconday_function_names[i].strptr);
                 break;
             }

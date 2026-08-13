@@ -9,7 +9,6 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
-#include "config.h"
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include <epan/proto_data.h>
@@ -373,6 +372,9 @@ dissect_wmbus(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
             break;
         case WMBUS_MODULE_MESSAGE_FORMAT_B:
             payload_tvb = dissect_wmbus_message_format_b(tvb, pinfo, wmbus_tree);
+            break;
+        case WMBUS_MODULE_MESSAGE_FORMAT_NOFRAME:
+            payload_tvb = tvb;
             break;
         default:
             // Unknown format

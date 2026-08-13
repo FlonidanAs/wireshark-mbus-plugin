@@ -10,7 +10,6 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
-#include "config.h"
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include "packet-mbus-common.h"
@@ -38,9 +37,15 @@ static int hf_mbus_ell_cc_synchronized;
 static int hf_mbus_ell_cc_response_delay;
 static int hf_mbus_ell_cc_bi_directional;
 static int hf_mbus_ell_acc;
+static int hf_mbus_ell_mafield;
+static int hf_mbus_ell_dst_manufacturer;
+static int hf_mbus_ell_dst_id_number;
+static int hf_mbus_ell_dst_version;
+static int hf_mbus_ell_dst_device_type;
 
 static int ett_mbus_ell;
 static int ett_mbus_ell_cc;
+static int ett_mbus_ell_dst;
 
 /* Dissector Handles. */
 static dissector_handle_t mbus_ell_handle;
@@ -72,9 +77,42 @@ static void dissect_extended_link_layer_1(tvbuff_t *tvb, packet_info *pinfo _U_,
     *offset += 1;
 }
 
+static void dissect_extended_link_layer_3(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int* offset,
+                                          mbus_packet_info_t* mbus_info) {
+    proto_tree_add_item(tree, hf_mbus_ell_cifield, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+
+    proto_tree_add_bitmask(tree, tvb, *offset, hf_mbus_ell_cc, ett_mbus_ell_cc, ell_cc_field_flags, ENC_NA);
+    *offset += 1;
+
+    proto_tree_add_item(tree, hf_mbus_ell_acc, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+
+    /* M2 + A2: destination address of the message */
+    mbus_info->wireless_info.destination_address.manufacturer = tvb_get_uint16(tvb, *offset, ENC_LITTLE_ENDIAN);
+    mbus_info->wireless_info.destination_address.identification_number = tvb_get_uint32(tvb, *offset + 2, ENC_LITTLE_ENDIAN);
+    mbus_info->wireless_info.destination_address.version = tvb_get_uint8(tvb, *offset + 6);
+    mbus_info->wireless_info.destination_address.device_type = tvb_get_uint8(tvb, *offset + 7);
+    mbus_info->wireless_info.destination_present = true;
+
+    proto_item* dst_item = proto_tree_add_item(tree, hf_mbus_ell_mafield, tvb, *offset, 8, ENC_NA);
+    proto_tree* dst_tree = proto_item_add_subtree(dst_item, ett_mbus_ell_dst);
+    proto_tree_add_item(dst_tree, hf_mbus_ell_dst_manufacturer, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+    proto_tree_add_item(dst_tree, hf_mbus_ell_dst_id_number, tvb, *offset + 2, 4, ENC_LITTLE_ENDIAN);
+    proto_tree_add_item(dst_tree, hf_mbus_ell_dst_version, tvb, *offset + 6, 1, ENC_NA);
+    proto_tree_add_item(dst_tree, hf_mbus_ell_dst_device_type, tvb, *offset + 7, 1, ENC_NA);
+    *offset += 8;
+}
+
 static int
-dissect_mbus_ell(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
+dissect_mbus_ell(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 {
+    /* Reject the packet if data is NULL */
+    if (data == NULL) {
+        return 0;
+    }
+    mbus_packet_info_t* mbus_info = (mbus_packet_info_t*)data;
+
     int offset = 0;
 
     /* Create the protocol tree */
@@ -91,7 +129,7 @@ dissect_mbus_ell(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
             offset += 1 + 8;
             break;
         case ExtendedLinkLayer3:
-            offset += 1 + 10;
+            dissect_extended_link_layer_3(tvb, pinfo, mbus_ell_tree, &offset, mbus_info);
             break;
         case ExtendedLinkLayer4:
             offset += 1 + 16;
@@ -105,9 +143,19 @@ dissect_mbus_ell(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
     cifield = tvb_get_uint8(tvb, offset);
     tvbuff_t* new_tvb = tvb_new_subset_length(tvb, offset, tvb_reported_length_remaining(tvb, offset));
     if (cifield == AuthenticationFragmentationLayer) {
+        /* Do not update the pinfo addresses with the ELL3 destination before calling the AFL:
+         * fragments are reassembled keyed on the pinfo addresses and not every fragment of a
+         * message carries an ELL3 destination (a sender may mix ELL types within one message),
+         * so the addresses must stay at their link layer values until after reassembly. */
         call_dissector_with_data(mbus_afl_handle, new_tvb, pinfo, proto_tree_get_root(tree), data);
+        if (mbus_info->wireless && mbus_info->wireless_info.destination_present) {
+            mbus_set_address_from_info(pinfo, mbus_info);
+        }
     }
     else {
+        if (mbus_info->wireless && mbus_info->wireless_info.destination_present) {
+            mbus_set_address_from_info(pinfo, mbus_info);
+        }
         call_dissector_with_data(mbus_tpl_handle, new_tvb, pinfo, proto_tree_get_root(tree), data);
     }
 
@@ -149,14 +197,30 @@ proto_register_mbus_ell(void)
             { "Bi-directional", "mbus.ell.cc.b", FT_BOOLEAN, 8, NULL,
               0x80, NULL, HFILL } },
         { &hf_mbus_ell_acc,
-            { "Access Number", "mbus.ell.acc", FT_UINT8, BASE_DEC, NULL,
-              0x00, NULL, HFILL } }
+            { "Access Number", "mbus.ell.acc", FT_UINT8, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ell_mafield,
+            { "Destination", "mbus.ell.dst", FT_NONE, BASE_NONE, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ell_dst_manufacturer,
+            { "Manufacturer", "mbus.ell.dst.manufacturer", FT_UINT16, BASE_CUSTOM, CF_FUNC(mbus_decode_manufacturer_id),
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ell_dst_id_number,
+            { "Identification Number", "mbus.ell.dst.id_number", FT_UINT32, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ell_dst_version,
+            { "Version", "mbus.ell.dst.version", FT_UINT8, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ell_dst_device_type,
+            { "Device Type", "mbus.ell.dst.device_type", FT_UINT8, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
     };
 
     /* MBus subtrees */
     static int *ett[] = {
         &ett_mbus_ell,
-        &ett_mbus_ell_cc
+        &ett_mbus_ell_cc,
+        &ett_mbus_ell_dst
     };
 
     proto_mbus_ell = proto_register_protocol("MBus ELL", "MBus ELL", MBUS_PROTOABBREV_ELL);

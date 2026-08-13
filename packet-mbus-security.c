@@ -9,7 +9,6 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
-#include "config.h"
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include <epan/expert.h>
@@ -453,9 +452,6 @@ static tvbuff_t* decrypt_mode9(tvbuff_t *tvb, packet_info *pinfo, proto_tree* tr
     offset += 4;
 
     // DECRYPT
-    uint8_t key[16];
-    memset(key, 0xDD, sizeof(key));
-
     uint8_t* enc_buffer = (uint8_t *)tvb_memdup(pinfo->pool, tvb, offset, unencrypted_length + encrypted_length);
     uint8_t* dec_buffer = (uint8_t *)tvb_memdup(pinfo->pool, tvb, offset, unencrypted_length + encrypted_length);
     uint8_t* tag_buffer = (uint8_t *)tvb_memdup(pinfo->pool, tvb, offset + unencrypted_length + encrypted_length, tag_length);

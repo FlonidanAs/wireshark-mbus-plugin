@@ -24,9 +24,13 @@
 
 VALUE_STRING_ENUM(wmbus_module_message_modes);
 
+// Added a NOFRAME variant as a temporary solution
+// needed so we can handoff data from another dissector that
+// removes the framing
 #define wmbus_module_message_formats_VALUE_STRING_LIST(XXX)     \
     XXX(WMBUS_MODULE_MESSAGE_FORMAT_A, 0, "Format A")           \
-    XXX(WMBUS_MODULE_MESSAGE_FORMAT_B, 1, "Format B")
+    XXX(WMBUS_MODULE_MESSAGE_FORMAT_B, 1, "Format B")           \
+    XXX(WMBUS_MODULE_MESSAGE_FORMAT_NOFRAME, 2, "Frameless")
 
 VALUE_STRING_ENUM(wmbus_module_message_formats);
 

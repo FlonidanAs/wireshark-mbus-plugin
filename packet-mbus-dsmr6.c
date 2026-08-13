@@ -10,7 +10,6 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
-#include "config.h"
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include <stdint.h>
@@ -391,7 +390,7 @@ proto_register_dsmr6(void)
 static bool
 dissect_dsmr6_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 {
-    if (dissect_dsmr6(tvb, pinfo, tree, false) == 0) {
+    if (dissect_dsmr6(tvb, pinfo, tree, data) == 0) {
         // Not a valid MBus DSMR6 packet
         return false;
     }
