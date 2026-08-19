@@ -44,7 +44,11 @@ static value_string_ext dsmr6_protocol_id_names_ext = VALUE_STRING_EXT_INIT(dsmr
     XXX(DSMR6_MESSAGE_CODE_READ_EVENT_LOG,                        60, "Read Event Log") \
     XXX(DSMR6_MESSAGE_CODE_READ_EVENT_LOG_RESPONSE,               61, "Read Event Log Response") \
     XXX(DSMR6_MESSAGE_CODE_CLEAR_EVENT_LOG,                       62, "Clear Event Log") \
-    XXX(DSMR6_MESSAGE_CODE_CLEAR_EVENT_LOG_RESPONSE,              63, "Clear Event Log Response")
+    XXX(DSMR6_MESSAGE_CODE_CLEAR_EVENT_LOG_RESPONSE,              63, "Clear Event Log Response") \
+    XXX(DSMR6_MESSAGE_CODE_READ_ATTRIBUTES,                       70, "Read Attributes") \
+    XXX(DSMR6_MESSAGE_CODE_READ_ATTRIBUTES_RESPONSE,              71, "Read Attributes Response") \
+    XXX(DSMR6_MESSAGE_CODE_WRITE_ATTRIBUTES,                      80, "Write Attributes") \
+    XXX(DSMR6_MESSAGE_CODE_WRITE_ATTRIBUTES_RESPONSE,             81, "Write Attributes Response")
 
 VALUE_STRING_ENUM(dsmr6_message_codes);
 VALUE_STRING_ARRAY(dsmr6_message_codes);
@@ -102,11 +106,19 @@ static int hf_dsmr6_event_push_log;
 static int hf_dsmr6_event_push_code;
 static int hf_dsmr6_event_push_data;
 static int hf_dsmr6_event_push_status_byte;
+static int hf_dsmr6_read_attributes_number_of_attributes;
+static int hf_dsmr6_read_attributes_attribute_id;
+static int hf_dsmr6_read_attributes_response_number_of_attributes;
+static int hf_dsmr6_read_attributes_response_attribute_id;
+static int hf_dsmr6_read_attributes_response_status;
+static int hf_dsmr6_read_attributes_response_data_type;
+static int hf_dsmr6_read_attributes_response_value;
 
 static int ett_dsmr6;
 static int ett_dsmr6_header;
 static int ett_dsmr6_payload;
 static int ett_dsmr6_billing_log_entries;
+static int ett_dsmr6_read_attributes_response_entries;
 
 static void dissect_default_response(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int* offset)
 {
@@ -209,6 +221,68 @@ static void dissect_event_push(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree
     *offset += 1;
 }
 
+static uint8_t get_attribute_value_length(uint8_t data_type)
+{
+    switch (data_type) {
+        case 0x00:
+        case 0x10:
+            return 1;
+        case 0x01:
+        case 0x11:
+            return 2;
+        case 0x02:
+        case 0x12:
+            return 4;
+        case 0x03:
+        case 0x13:
+            return 8;
+        default:
+            return 0; // Unknown data type
+    }
+}
+
+static void dissect_read_attributes(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int* offset)
+{
+    uint8_t number_of_attributes = tvb_get_uint8(tvb, *offset);
+    proto_tree_add_item(tree, hf_dsmr6_read_attributes_number_of_attributes, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+
+    for (size_t i = 0; i < number_of_attributes; i++) {
+        proto_tree_add_item(tree, hf_dsmr6_read_attributes_attribute_id, tvb, *offset, 1, ENC_NA);
+        *offset += 1;
+    }
+}
+
+static void dissect_read_attributes_response(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int* offset)
+{
+    uint8_t number_of_attributes = tvb_get_uint8(tvb, *offset);
+    proto_tree_add_item(tree, hf_dsmr6_read_attributes_response_number_of_attributes, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+
+    for (size_t i = 0; i < number_of_attributes; i++) {
+        proto_tree* attribute_tree = proto_tree_add_subtree_format(tree, tvb, *offset, 0, ett_dsmr6_read_attributes_response_entries, NULL, "Attribute %zu", i + 1);
+
+        proto_tree_add_item(attribute_tree, hf_dsmr6_read_attributes_response_attribute_id, tvb, *offset, 1, ENC_NA);
+        *offset += 1;
+
+        uint8_t status = tvb_get_uint8(tvb, *offset);
+        proto_tree_add_item(attribute_tree, hf_dsmr6_read_attributes_response_status, tvb, *offset, 1, ENC_NA);
+        *offset += 1;
+
+        if (status != DSMR6_STATUS_SUCCESS) {
+            continue;
+        }
+
+        uint8_t data_type = tvb_get_uint8(tvb, *offset);
+        proto_tree_add_item(attribute_tree, hf_dsmr6_read_attributes_response_data_type, tvb, *offset, 1, ENC_NA);
+        *offset += 1;
+
+        uint8_t value_length = get_attribute_value_length(data_type);
+        proto_tree_add_item(attribute_tree, hf_dsmr6_read_attributes_response_value, tvb, *offset, value_length, ENC_LITTLE_ENDIAN);
+        *offset += value_length;
+    }
+}
+
 static bool check_dsmr6_command(tvbuff_t *tvb)
 {
     int offset = 0;
@@ -288,6 +362,12 @@ dissect_dsmr6(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
                 break;
             case DSMR6_MESSAGE_CODE_CLEAR_BILLING_LOG:
                 dissect_clear_billing_log(tvb, pinfo, payload_tree, &offset);
+                break;
+            case DSMR6_MESSAGE_CODE_READ_ATTRIBUTES:
+                dissect_read_attributes(tvb, pinfo, payload_tree, &offset);
+                break;
+            case DSMR6_MESSAGE_CODE_READ_ATTRIBUTES_RESPONSE:
+                dissect_read_attributes_response(tvb, pinfo, payload_tree, &offset);
                 break;
             default:
                 break;
@@ -370,6 +450,24 @@ proto_register_dsmr6(void)
         { &hf_dsmr6_event_push_status_byte,
             { "Event Status Byte", "dsmr6.event_push.status_byte", FT_UINT8, BASE_HEX, NULL,
               0x00, NULL, HFILL } },
+        { &hf_dsmr6_read_attributes_number_of_attributes,
+            { "Number of Attributes", "dsmr6.read_attributes.number_of_attributes", FT_UINT8, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_read_attributes_attribute_id,
+            { "Attribute ID", "dsmr6.read_attributes.attribute_id", FT_UINT8, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_read_attributes_response_attribute_id,
+            { "Attribute ID", "dsmr6.read_attributes_response.attribute_id", FT_UINT8, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_read_attributes_response_status,
+            { "Attribute Status", "dsmr6.read_attributes_response.status", FT_UINT8, BASE_HEX | BASE_EXT_STRING, &dsmr6_status_names_ext,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_read_attributes_response_data_type,
+            { "Attribute Data Type", "dsmr6.read_attributes_response.data_type", FT_UINT8, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_read_attributes_response_value,
+            { "Attribute Value", "dsmr6.read_attributes_response.value", FT_BYTES, BASE_NONE, NULL,
+              0x00, NULL, HFILL } },
     };
 
     /* MBus subtrees */
@@ -378,6 +476,7 @@ proto_register_dsmr6(void)
         &ett_dsmr6_header,
         &ett_dsmr6_payload,
         &ett_dsmr6_billing_log_entries,
+        &ett_dsmr6_read_attributes_response_entries,
     };
 
     proto_dsmr6 = proto_register_protocol("DSMR6", "DSMR6", "dsmr6");
