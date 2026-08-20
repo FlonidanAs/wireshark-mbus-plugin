@@ -68,6 +68,41 @@ VALUE_STRING_ENUM(dsmr6_status_names);
 VALUE_STRING_ARRAY(dsmr6_status_names);
 static value_string_ext dsmr6_status_names_ext = VALUE_STRING_EXT_INIT(dsmr6_status_names);
 
+#define dsmr6_attribute_names_VALUE_STRING_LIST(XXX) \
+    XXX(DSMR6_ATTRIBUTE_ID_HARDWARE_LR_VERSION,             1, "Hardware LR Version") \
+    XXX(DSMR6_ATTRIBUTE_ID_BOOTLOADER_LR_VERSION,           2, "Bootloader LR Version") \
+    XXX(DSMR6_ATTRIBUTE_ID_LR_VERSION,                      3, "LR Version") \
+    XXX(DSMR6_ATTRIBUTE_ID_HARDWARE_NLR_VERSION,            10, "Hardware NLR Version") \
+    XXX(DSMR6_ATTRIBUTE_ID_BOOTLOADER_NLR_VERSION,          11, "Bootloader NLR Version") \
+    XXX(DSMR6_ATTRIBUTE_ID_NLR_VERSION,                     12, "NLR Version") \
+    XXX(DSMR6_ATTRIBUTE_ID_COMMUNICATION_MODULE_VERSION,    13, "Communication Module Version") \
+    XXX(DSMR6_ATTRIBUTE_ID_ADMINISTRATIVE_STATUS,           20, "Administrative Status") \
+    XXX(DSMR6_ATTRIBUTE_ID_X0_STATUS,                       21, "X0 Status") \
+    XXX(DSMR6_ATTRIBUTE_ID_TEST_MODE_STATUS,                22, "Test Mode Status") \
+    XXX(DSMR6_ATTRIBUTE_ID_TEST_MODE_DURATION,              23, "Test Mode Duration") \
+    XXX(DSMR6_ATTRIBUTE_ID_TEST_MODE_BACKLIGHT_DURATION,    24, "Test Mode Backlight Duration") \
+    XXX(DSMR6_ATTRIBUTE_ID_AVERAGE_COMPUTATION_USED,        30, "Average Computation Used") \
+    XXX(DSMR6_ATTRIBUTE_ID_DATA_STORAGE_USED,               31, "Data Storage Used") \
+    XXX(DSMR6_ATTRIBUTE_ID_MEMORY_USED,                     32, "Memory Used") \
+    XXX(DSMR6_ATTRIBUTE_ID_UPTIME,                          33, "Uptime") \
+    XXX(DSMR6_ATTRIBUTE_ID_BATTERY_DAYS_LEFT,               34, "Battery Days Left") \
+    XXX(DSMR6_ATTRIBUTE_ID_AVERAGE_COMPUTATION_INTERVAL,    40, "Average Computation Interval") \
+    XXX(DSMR6_ATTRIBUTE_ID_AMBIENT_TEMPERATURE,             50, "Ambient Temperature") \
+    XXX(DSMR6_ATTRIBUTE_ID_GAS_TEMPERATURE,                 51, "Gas Temperature") \
+    XXX(DSMR6_ATTRIBUTE_ID_GAS_FLOW,                        52, "Gas Flow") \
+    XXX(DSMR6_ATTRIBUTE_ID_METER_INDEX_VALUE,               70, "Meter Index Value") \
+    XXX(DSMR6_ATTRIBUTE_ID_BACKLIGHT_DURATION,              80, "Backlight Duration") \
+    XXX(DSMR6_ATTRIBUTE_ID_EQUIPMENT_IDENTIFIER,            110, "Equipment Identifier") \
+    XXX(DSMR6_ATTRIBUTE_ID_GATEWAY_EQUIPMENT_IDENTIFIER,    111, "Gateway Equipment Identifier") \
+    XXX(DSMR6_ATTRIBUTE_ID_EVENT_BYTE,                      120, "Event Byte") \
+    XXX(DSMR6_ATTRIBUTE_ID_FREQUENT_ACCESS_CYCLE,           150, "Frequent Access Cycle") \
+    XXX(DSMR6_ATTRIBUTE_ID_ORPHAN_TIMEOUT_PERIOD,           151, "Orphan Timeout Period") \
+    XXX(DSMR6_ATTRIBUTE_ID_CERTIFICATE_EXPIRATION_WARNING,  160, "Certificate Expiration Warning Period")
+
+VALUE_STRING_ENUM(dsmr6_attribute_names);
+VALUE_STRING_ARRAY(dsmr6_attribute_names);
+static value_string_ext dsmr6_attribute_names_ext = VALUE_STRING_EXT_INIT(dsmr6_attribute_names);
+
 /*************************/
 /* Function Declarations */
 /*************************/
@@ -112,7 +147,35 @@ static int hf_dsmr6_read_attributes_response_number_of_attributes;
 static int hf_dsmr6_read_attributes_response_attribute_id;
 static int hf_dsmr6_read_attributes_response_status;
 static int hf_dsmr6_read_attributes_response_data_type;
-static int hf_dsmr6_read_attributes_response_value;
+static int hf_dsmr6_attribute_hw_lr_version;
+static int hf_dsmr6_attribute_bootloader_lr_version;
+static int hf_dsmr6_attribute_lr_version;
+static int hf_dsmr6_attribute_hw_nlr_version;
+static int hf_dsmr6_attribute_bootloader_nlr_version;
+static int hf_dsmr6_attribute_nlr_version;
+static int hf_dsmr6_attribute_communication_module_version;
+static int hf_dsmr6_attribute_administrative_status;
+static int hf_dsmr6_attribute_x0_status;
+static int hf_dsmr6_attribute_test_mode_status;
+static int hf_dsmr6_attribute_test_mode_duration;
+static int hf_dsmr6_attribute_test_mode_backlight_duration;
+static int hf_dsmr6_attribute_average_computation_used;
+static int hf_dsmr6_attribute_data_storage_used;
+static int hf_dsmr6_attribute_memory_used;
+static int hf_dsmr6_attribute_uptime;
+static int hf_dsmr6_attribute_battery_days_left;
+static int hf_dsmr6_attribute_average_computation_interval;
+static int hf_dsmr6_attribute_ambient_temperature;
+static int hf_dsmr6_attribute_gas_temperature;
+static int hf_dsmr6_attribute_gas_flow;
+static int hf_dsmr6_attribute_meter_index_value;
+static int hf_dsmr6_attribute_backlight_duration;
+static int hf_dsmr6_attribute_equipment_identifier;
+static int hf_dsmr6_attribute_gateway_equipment_identifier;
+static int hf_dsmr6_attribute_event_byte;
+static int hf_dsmr6_attribute_frequent_access_cycle;
+static int hf_dsmr6_attribute_orphan_timeout_period;
+static int hf_dsmr6_attribute_certificate_expiration_warning;
 
 static int ett_dsmr6;
 static int ett_dsmr6_header;
@@ -221,26 +284,6 @@ static void dissect_event_push(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree
     *offset += 1;
 }
 
-static uint8_t get_attribute_value_length(uint8_t data_type)
-{
-    switch (data_type) {
-        case 0x00:
-        case 0x10:
-            return 1;
-        case 0x01:
-        case 0x11:
-            return 2;
-        case 0x02:
-        case 0x12:
-            return 4;
-        case 0x03:
-        case 0x13:
-            return 8;
-        default:
-            return 0; // Unknown data type
-    }
-}
-
 static void dissect_read_attributes(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int* offset)
 {
     uint8_t number_of_attributes = tvb_get_uint8(tvb, *offset);
@@ -262,6 +305,7 @@ static void dissect_read_attributes_response(tvbuff_t *tvb, packet_info *pinfo _
     for (size_t i = 0; i < number_of_attributes; i++) {
         proto_tree* attribute_tree = proto_tree_add_subtree_format(tree, tvb, *offset, 0, ett_dsmr6_read_attributes_response_entries, NULL, "Attribute %zu", i + 1);
 
+        uint8_t attribute_id = tvb_get_uint8(tvb, *offset);
         proto_tree_add_item(attribute_tree, hf_dsmr6_read_attributes_response_attribute_id, tvb, *offset, 1, ENC_NA);
         *offset += 1;
 
@@ -273,13 +317,131 @@ static void dissect_read_attributes_response(tvbuff_t *tvb, packet_info *pinfo _
             continue;
         }
 
-        uint8_t data_type = tvb_get_uint8(tvb, *offset);
         proto_tree_add_item(attribute_tree, hf_dsmr6_read_attributes_response_data_type, tvb, *offset, 1, ENC_NA);
         *offset += 1;
 
-        uint8_t value_length = get_attribute_value_length(data_type);
-        proto_tree_add_item(attribute_tree, hf_dsmr6_read_attributes_response_value, tvb, *offset, value_length, ENC_LITTLE_ENDIAN);
-        *offset += value_length;
+        int length = 0;
+        switch (attribute_id) {
+            case DSMR6_ATTRIBUTE_ID_HARDWARE_LR_VERSION:
+                proto_tree_add_item_ret_length(attribute_tree, hf_dsmr6_attribute_hw_lr_version, tvb, *offset, 1, ENC_NA, &length);
+                *offset += length;
+                break;
+            case DSMR6_ATTRIBUTE_ID_BOOTLOADER_LR_VERSION:
+                proto_tree_add_item_ret_length(attribute_tree, hf_dsmr6_attribute_bootloader_lr_version, tvb, *offset, 1, ENC_NA, &length);
+                *offset += length;
+                break;
+            case DSMR6_ATTRIBUTE_ID_LR_VERSION:
+                proto_tree_add_item_ret_length(attribute_tree, hf_dsmr6_attribute_lr_version, tvb, *offset, 1, ENC_NA, &length);
+                *offset += length;
+                break;
+            case DSMR6_ATTRIBUTE_ID_HARDWARE_NLR_VERSION:
+                proto_tree_add_item_ret_length(attribute_tree, hf_dsmr6_attribute_hw_nlr_version, tvb, *offset, 1, ENC_NA, &length);
+                *offset += length;
+                break;
+            case DSMR6_ATTRIBUTE_ID_BOOTLOADER_NLR_VERSION:
+                proto_tree_add_item_ret_length(attribute_tree, hf_dsmr6_attribute_bootloader_nlr_version, tvb, *offset, 1, ENC_NA, &length);
+                *offset += length;
+                break;
+            case DSMR6_ATTRIBUTE_ID_NLR_VERSION:
+                proto_tree_add_item_ret_length(attribute_tree, hf_dsmr6_attribute_nlr_version, tvb, *offset, 1, ENC_NA, &length);
+                *offset += length;
+                break;
+            case DSMR6_ATTRIBUTE_ID_COMMUNICATION_MODULE_VERSION:
+                proto_tree_add_item_ret_length(attribute_tree, hf_dsmr6_attribute_communication_module_version, tvb, *offset, 1, ENC_NA, &length);
+                *offset += length;
+                break;
+            case DSMR6_ATTRIBUTE_ID_ADMINISTRATIVE_STATUS:
+                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_administrative_status, tvb, *offset, 1, ENC_NA);
+                *offset += 1;
+                break;
+            case DSMR6_ATTRIBUTE_ID_X0_STATUS:
+                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_x0_status, tvb, *offset, 1, ENC_NA);
+                *offset += 1;
+                break;
+            case DSMR6_ATTRIBUTE_ID_TEST_MODE_STATUS:
+                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_test_mode_status, tvb, *offset, 1, ENC_NA);
+                *offset += 1;
+                break;
+            case DSMR6_ATTRIBUTE_ID_TEST_MODE_DURATION:
+                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_test_mode_duration, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+                *offset += 2;
+                break;
+            case DSMR6_ATTRIBUTE_ID_TEST_MODE_BACKLIGHT_DURATION:
+                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_test_mode_backlight_duration, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+                *offset += 2;
+                break;
+            case DSMR6_ATTRIBUTE_ID_AVERAGE_COMPUTATION_USED:
+                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_average_computation_used, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
+                *offset += 4;
+                break;
+            case DSMR6_ATTRIBUTE_ID_DATA_STORAGE_USED:
+                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_data_storage_used, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
+                *offset += 4;
+                break;
+            case DSMR6_ATTRIBUTE_ID_MEMORY_USED:
+                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_memory_used, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
+                *offset += 4;
+                break;
+            case DSMR6_ATTRIBUTE_ID_UPTIME:
+                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_uptime, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
+                *offset += 4;
+                break;
+            case DSMR6_ATTRIBUTE_ID_BATTERY_DAYS_LEFT:
+                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_battery_days_left, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
+                *offset += 4;
+                break;
+            case DSMR6_ATTRIBUTE_ID_AVERAGE_COMPUTATION_INTERVAL:
+                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_average_computation_interval, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+                *offset += 2;
+                break;
+            case DSMR6_ATTRIBUTE_ID_AMBIENT_TEMPERATURE:
+                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_ambient_temperature, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+                *offset += 2;
+                break;
+            case DSMR6_ATTRIBUTE_ID_GAS_TEMPERATURE:
+                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_gas_temperature, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+                *offset += 2;
+                break;
+            case DSMR6_ATTRIBUTE_ID_GAS_FLOW:
+                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_gas_flow, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+                *offset += 2;
+                break;
+            case DSMR6_ATTRIBUTE_ID_METER_INDEX_VALUE:
+                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_meter_index_value, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
+                *offset += 4;
+                break;
+            case DSMR6_ATTRIBUTE_ID_BACKLIGHT_DURATION:
+                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_backlight_duration, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+                *offset += 2;
+                break;
+            case DSMR6_ATTRIBUTE_ID_EQUIPMENT_IDENTIFIER:
+                proto_tree_add_item_ret_length(attribute_tree, hf_dsmr6_attribute_equipment_identifier, tvb, *offset, 1, ENC_NA, &length);
+                *offset += length;
+                break;
+            case DSMR6_ATTRIBUTE_ID_GATEWAY_EQUIPMENT_IDENTIFIER:
+                proto_tree_add_item_ret_length(attribute_tree, hf_dsmr6_attribute_gateway_equipment_identifier, tvb, *offset, 1, ENC_NA, &length);
+                *offset += length;
+                break;
+            case DSMR6_ATTRIBUTE_ID_EVENT_BYTE:
+                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_event_byte, tvb, *offset, 1, ENC_NA);
+                *offset += 1;
+                break;
+            case DSMR6_ATTRIBUTE_ID_FREQUENT_ACCESS_CYCLE:
+                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_frequent_access_cycle, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+                *offset += 2;
+                break;
+            case DSMR6_ATTRIBUTE_ID_ORPHAN_TIMEOUT_PERIOD:
+                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_orphan_timeout_period, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+                *offset += 2;
+                break;
+            case DSMR6_ATTRIBUTE_ID_CERTIFICATE_EXPIRATION_WARNING:
+                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_certificate_expiration_warning, tvb, *offset, 1, ENC_NA);
+                *offset += 1;
+                break;
+            default:
+                // Unknown attribute ID, skip the value based on data type
+                break;
+        }
     }
 }
 
@@ -454,10 +616,13 @@ proto_register_dsmr6(void)
             { "Number of Attributes", "dsmr6.read_attributes.number_of_attributes", FT_UINT8, BASE_DEC, NULL,
               0x00, NULL, HFILL } },
         { &hf_dsmr6_read_attributes_attribute_id,
-            { "Attribute ID", "dsmr6.read_attributes.attribute_id", FT_UINT8, BASE_HEX, NULL,
+            { "Attribute ID", "dsmr6.read_attributes.attribute_id", FT_UINT8, BASE_DEC | BASE_EXT_STRING, &dsmr6_attribute_names_ext,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_read_attributes_response_number_of_attributes,
+            { "Number of Attributes", "dsmr6.read_attributes_response.number_of_attributes", FT_UINT8, BASE_DEC, NULL,
               0x00, NULL, HFILL } },
         { &hf_dsmr6_read_attributes_response_attribute_id,
-            { "Attribute ID", "dsmr6.read_attributes_response.attribute_id", FT_UINT8, BASE_HEX, NULL,
+            { "Attribute ID", "dsmr6.read_attributes_response.attribute_id", FT_UINT8, BASE_DEC | BASE_EXT_STRING, &dsmr6_attribute_names_ext,
               0x00, NULL, HFILL } },
         { &hf_dsmr6_read_attributes_response_status,
             { "Attribute Status", "dsmr6.read_attributes_response.status", FT_UINT8, BASE_HEX | BASE_EXT_STRING, &dsmr6_status_names_ext,
@@ -465,8 +630,92 @@ proto_register_dsmr6(void)
         { &hf_dsmr6_read_attributes_response_data_type,
             { "Attribute Data Type", "dsmr6.read_attributes_response.data_type", FT_UINT8, BASE_HEX, NULL,
               0x00, NULL, HFILL } },
-        { &hf_dsmr6_read_attributes_response_value,
-            { "Attribute Value", "dsmr6.read_attributes_response.value", FT_BYTES, BASE_NONE, NULL,
+        { &hf_dsmr6_attribute_hw_lr_version,
+            { "Hardware LR Version", "dsmr6.read_attributes_response.attr_hw_lr_version", FT_UINT_STRING, BASE_NONE, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_attribute_bootloader_lr_version,
+            { "Bootloader LR Version", "dsmr6.read_attributes_response.attr_bootloader_lr_version", FT_UINT_STRING, BASE_NONE, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_attribute_lr_version,
+            { "LR Version", "dsmr6.read_attributes_response.attr_lr_version", FT_UINT_STRING, BASE_NONE, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_attribute_hw_nlr_version,
+            { "Hardware NLR Version", "dsmr6.read_attributes_response.attr_hw_nlr_version", FT_UINT_STRING, BASE_NONE, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_attribute_bootloader_nlr_version,
+            { "Bootloader NLR Version", "dsmr6.read_attributes_response.attr_bootloader_nlr_version", FT_UINT_STRING, BASE_NONE, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_attribute_nlr_version,
+            { "NLR Version", "dsmr6.read_attributes_response.attr_nlr_version", FT_UINT_STRING, BASE_NONE, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_attribute_communication_module_version,
+            { "Communication Module Version", "dsmr6.read_attributes_response.attr_communication_module_version", FT_UINT_STRING, BASE_NONE, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_attribute_administrative_status,
+            { "Administrative Status", "dsmr6.read_attributes_response.attr_administrative_status", FT_UINT8, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_attribute_x0_status,
+            { "X0 Status", "dsmr6.read_attributes_response.attr_x0_status", FT_UINT8, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_attribute_test_mode_status,
+            { "Test Mode Status", "dsmr6.read_attributes_response.attr_test_mode_status", FT_UINT8, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_attribute_test_mode_duration,
+            { "Test Mode Duration", "dsmr6.read_attributes_response.attr_test_mode_duration", FT_UINT16, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_attribute_test_mode_backlight_duration,
+            { "Test Mode Backlight Duration", "dsmr6.read_attributes_response.attr_test_mode_backlight_duration", FT_UINT16, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_attribute_average_computation_used,
+            { "Average Computation Used", "dsmr6.read_attributes_response.attr_average_computation_used", FT_UINT32, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_attribute_data_storage_used,
+            { "Data Storage Used", "dsmr6.read_attributes_response.attr_data_storage_used", FT_UINT32, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_attribute_memory_used,
+            { "Memory Used", "dsmr6.read_attributes_response.attr_memory_used", FT_UINT32, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_attribute_uptime,
+            { "Uptime", "dsmr6.read_attributes_response.attr_uptime", FT_UINT32, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_attribute_battery_days_left,
+            { "Battery Days Left", "dsmr6.read_attributes_response.attr_battery_days_left", FT_UINT32, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_attribute_average_computation_interval,
+            { "Average Computation Interval", "dsmr6.read_attributes_response.attr_average_computation_interval", FT_UINT16, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_attribute_ambient_temperature,
+            { "Ambient Temperature", "dsmr6.read_attributes_response.attr_ambient_temperature", FT_UINT16, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_attribute_gas_temperature,
+            { "Gas Temperature", "dsmr6.read_attributes_response.attr_gas_temperature", FT_UINT16, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_attribute_gas_flow,
+            { "Gas Flow", "dsmr6.read_attributes_response.attr_gas_flow", FT_UINT16, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_attribute_meter_index_value,
+            { "Meter Index Value", "dsmr6.read_attributes_response.attr_meter_index_value", FT_UINT32, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_attribute_backlight_duration,
+            { "Backlight Duration", "dsmr6.read_attributes_response.attr_backlight_duration", FT_UINT16, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_attribute_equipment_identifier,
+            { "Equipment Identifier", "dsmr6.read_attributes_response.attr_equipment_identifier", FT_UINT_STRING, BASE_NONE, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_attribute_gateway_equipment_identifier,
+            { "Gateway Equipment Identifier", "dsmr6.read_attributes_response.attr_gateway_equipment_identifier", FT_UINT_STRING, BASE_NONE, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_attribute_event_byte,
+            { "Event Byte", "dsmr6.read_attributes_response.attr_event_byte", FT_UINT8, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_attribute_frequent_access_cycle,
+            { "Frequent Access Cycle", "dsmr6.read_attributes_response.attr_frequent_access_cycle", FT_UINT16, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_attribute_orphan_timeout_period,
+            { "Orphan Timeout Period", "dsmr6.read_attributes_response.attr_orphan_timeout_period", FT_UINT16, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_attribute_certificate_expiration_warning,
+            { "Certificate Expiration Warning", "dsmr6.read_attributes_response.attr_certificate_expiration_warning", FT_UINT8, BASE_DEC, NULL,
               0x00, NULL, HFILL } },
     };
 
