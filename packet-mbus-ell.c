@@ -38,6 +38,12 @@ static int hf_mbus_ell_cc_synchronized;
 static int hf_mbus_ell_cc_response_delay;
 static int hf_mbus_ell_cc_bi_directional;
 static int hf_mbus_ell_acc;
+static int hf_mbus_ell_session_number;
+static int hf_mbus_ell_payload_crc;
+static int hf_mbus_ell_manufacturer_id;
+static int hf_mbus_ell_identification_number;
+static int hf_mbus_ell_version;
+static int hf_mbus_ell_device_type;
 
 static int ett_mbus_ell;
 static int ett_mbus_ell_cc;
@@ -72,6 +78,78 @@ static void dissect_extended_link_layer_1(tvbuff_t *tvb, packet_info *pinfo _U_,
     *offset += 1;
 }
 
+static void dissect_extended_link_layer_2(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int* offset)
+{
+    proto_tree_add_item(tree, hf_mbus_ell_cifield, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+
+    proto_tree_add_bitmask(tree, tvb, *offset, hf_mbus_ell_cc, ett_mbus_ell_cc, ell_cc_field_flags, ENC_NA);
+    *offset += 1;
+
+    proto_tree_add_item(tree, hf_mbus_ell_acc, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+
+    proto_tree_add_item(tree, hf_mbus_ell_session_number, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
+    *offset += 4;
+
+    proto_tree_add_item(tree, hf_mbus_ell_payload_crc, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+    *offset += 2;
+}
+
+static void dissect_extended_link_layer_3(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int* offset)
+{
+    proto_tree_add_item(tree, hf_mbus_ell_cifield, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+
+    proto_tree_add_bitmask(tree, tvb, *offset, hf_mbus_ell_cc, ett_mbus_ell_cc, ell_cc_field_flags, ENC_NA);
+    *offset += 1;
+
+    proto_tree_add_item(tree, hf_mbus_ell_acc, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+
+    proto_tree_add_item(tree, hf_mbus_ell_manufacturer_id, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+    *offset += 2;
+
+    proto_tree_add_item(tree, hf_mbus_ell_identification_number, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
+    *offset += 4;
+
+    proto_tree_add_item(tree, hf_mbus_ell_version, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+
+    proto_tree_add_item(tree, hf_mbus_ell_device_type, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+}
+
+static void dissect_extended_link_layer_4(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int* offset)
+{
+    proto_tree_add_item(tree, hf_mbus_ell_cifield, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+
+    proto_tree_add_bitmask(tree, tvb, *offset, hf_mbus_ell_cc, ett_mbus_ell_cc, ell_cc_field_flags, ENC_NA);
+    *offset += 1;
+
+    proto_tree_add_item(tree, hf_mbus_ell_acc, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+
+    proto_tree_add_item(tree, hf_mbus_ell_manufacturer_id, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+    *offset += 2;
+
+    proto_tree_add_item(tree, hf_mbus_ell_identification_number, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
+    *offset += 4;
+
+    proto_tree_add_item(tree, hf_mbus_ell_version, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+
+    proto_tree_add_item(tree, hf_mbus_ell_device_type, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+
+    proto_tree_add_item(tree, hf_mbus_ell_session_number, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
+    *offset += 4;
+
+    proto_tree_add_item(tree, hf_mbus_ell_payload_crc, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+    *offset += 2;
+}
+
 static int
 dissect_mbus_ell(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 {
@@ -88,13 +166,13 @@ dissect_mbus_ell(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
             dissect_extended_link_layer_1(tvb, pinfo, mbus_ell_tree, &offset);
             break;
         case ExtendedLinkLayer2:
-            offset += 1 + 8;
+            dissect_extended_link_layer_2(tvb, pinfo, mbus_ell_tree, &offset);
             break;
         case ExtendedLinkLayer3:
-            offset += 1 + 10;
+            dissect_extended_link_layer_3(tvb, pinfo, mbus_ell_tree, &offset);
             break;
         case ExtendedLinkLayer4:
-            offset += 1 + 16;
+            dissect_extended_link_layer_4(tvb, pinfo, mbus_ell_tree, &offset);
             break;
     }
 
@@ -150,7 +228,25 @@ proto_register_mbus_ell(void)
               0x80, NULL, HFILL } },
         { &hf_mbus_ell_acc,
             { "Access Number", "mbus.ell.acc", FT_UINT8, BASE_DEC, NULL,
-              0x00, NULL, HFILL } }
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ell_session_number,
+            { "Session Number", "mbus.ell.session_number", FT_UINT32, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ell_payload_crc,
+            { "Payload CRC", "mbus.ell.payload_crc", FT_UINT16, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ell_manufacturer_id,
+            { "Manufacturer", "mbus.ell.manufacturer", FT_UINT16, BASE_CUSTOM, CF_FUNC(mbus_decode_manufacturer_id),
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ell_identification_number,
+            { "Identification Number", "mbus.ell.identification_number", FT_UINT32, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ell_version,
+            { "Version", "mbus.ell.version", FT_UINT8, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ell_device_type,
+            { "Device Type", "mbus.ell.device_type", FT_UINT8, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
     };
 
     /* MBus subtrees */
