@@ -180,13 +180,15 @@ dissect_mbus_ell(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
     proto_item_set_end(proto_root, tvb, offset);
 
     /* Call mbus AFL or TPL dissector. Depends on the CI Field */
-    cifield = tvb_get_uint8(tvb, offset);
-    tvbuff_t* new_tvb = tvb_new_subset_length(tvb, offset, tvb_reported_length_remaining(tvb, offset));
-    if (cifield == AuthenticationFragmentationLayer) {
-        call_dissector_with_data(mbus_afl_handle, new_tvb, pinfo, proto_tree_get_root(tree), data);
-    }
-    else {
-        call_dissector_with_data(mbus_tpl_handle, new_tvb, pinfo, proto_tree_get_root(tree), data);
+    if (tvb_reported_length_remaining(tvb, offset) > 0) {
+        cifield = tvb_get_uint8(tvb, offset);
+        tvbuff_t* new_tvb = tvb_new_subset_length(tvb, offset, tvb_reported_length_remaining(tvb, offset));
+        if (cifield == AuthenticationFragmentationLayer) {
+            call_dissector_with_data(mbus_afl_handle, new_tvb, pinfo, proto_tree_get_root(tree), data);
+        }
+        else {
+            call_dissector_with_data(mbus_tpl_handle, new_tvb, pinfo, proto_tree_get_root(tree), data);
+        }
     }
 
     return tvb_captured_length(tvb);
