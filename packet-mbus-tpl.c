@@ -303,7 +303,7 @@ void proto_register_mbus_tpl(void)
               0x0F, NULL, HFILL } },
 
         { &hf_mbus_access_counter,
-            { "Access Counter", "mbus.tpl.access_counter", FT_UINT8, BASE_HEX, NULL,
+            { "Access Counter", "mbus.tpl.access_counter", FT_UINT8, BASE_DEC, NULL,
               0x00, NULL, HFILL } },
 
         { &hf_mbus_status,
