@@ -96,7 +96,8 @@ static void dissect_extended_link_layer_2(tvbuff_t *tvb, packet_info *pinfo _U_,
     *offset += 2;
 }
 
-static void dissect_extended_link_layer_3(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int* offset)
+static void dissect_extended_link_layer_3(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int* offset,
+                                          mbus_packet_info_t* mbus_info)
 {
     proto_tree_add_item(tree, hf_mbus_ell_cifield, tvb, *offset, 1, ENC_NA);
     *offset += 1;
@@ -107,20 +108,28 @@ static void dissect_extended_link_layer_3(tvbuff_t *tvb, packet_info *pinfo _U_,
     proto_tree_add_item(tree, hf_mbus_ell_acc, tvb, *offset, 1, ENC_NA);
     *offset += 1;
 
+    /* M2 + A2: destination address of the message */
+    mbus_info->wireless_info.destination_address.manufacturer = tvb_get_uint16(tvb, *offset, ENC_LITTLE_ENDIAN);
     proto_tree_add_item(tree, hf_mbus_ell_manufacturer_id, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
     *offset += 2;
 
+    mbus_info->wireless_info.destination_address.identification_number = tvb_get_uint32(tvb, *offset, ENC_LITTLE_ENDIAN);
     proto_tree_add_item(tree, hf_mbus_ell_identification_number, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
     *offset += 4;
 
+    mbus_info->wireless_info.destination_address.version = tvb_get_uint8(tvb, *offset);
     proto_tree_add_item(tree, hf_mbus_ell_version, tvb, *offset, 1, ENC_NA);
     *offset += 1;
 
+    mbus_info->wireless_info.destination_address.device_type = tvb_get_uint8(tvb, *offset);
     proto_tree_add_item(tree, hf_mbus_ell_device_type, tvb, *offset, 1, ENC_NA);
     *offset += 1;
+
+    mbus_info->wireless_info.destination_present = true;
 }
 
-static void dissect_extended_link_layer_4(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int* offset)
+static void dissect_extended_link_layer_4(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int* offset,
+                                          mbus_packet_info_t* mbus_info)
 {
     proto_tree_add_item(tree, hf_mbus_ell_cifield, tvb, *offset, 1, ENC_NA);
     *offset += 1;
@@ -131,17 +140,24 @@ static void dissect_extended_link_layer_4(tvbuff_t *tvb, packet_info *pinfo _U_,
     proto_tree_add_item(tree, hf_mbus_ell_acc, tvb, *offset, 1, ENC_NA);
     *offset += 1;
 
+    /* M2 + A2: destination address of the message */
+    mbus_info->wireless_info.destination_address.manufacturer = tvb_get_uint16(tvb, *offset, ENC_LITTLE_ENDIAN);
     proto_tree_add_item(tree, hf_mbus_ell_manufacturer_id, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
     *offset += 2;
 
+    mbus_info->wireless_info.destination_address.identification_number = tvb_get_uint32(tvb, *offset, ENC_LITTLE_ENDIAN);
     proto_tree_add_item(tree, hf_mbus_ell_identification_number, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
     *offset += 4;
 
+    mbus_info->wireless_info.destination_address.version = tvb_get_uint8(tvb, *offset);
     proto_tree_add_item(tree, hf_mbus_ell_version, tvb, *offset, 1, ENC_NA);
     *offset += 1;
 
+    mbus_info->wireless_info.destination_address.device_type = tvb_get_uint8(tvb, *offset);
     proto_tree_add_item(tree, hf_mbus_ell_device_type, tvb, *offset, 1, ENC_NA);
     *offset += 1;
+
+    mbus_info->wireless_info.destination_present = true;
 
     proto_tree_add_item(tree, hf_mbus_ell_session_number, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
     *offset += 4;
@@ -151,8 +167,14 @@ static void dissect_extended_link_layer_4(tvbuff_t *tvb, packet_info *pinfo _U_,
 }
 
 static int
-dissect_mbus_ell(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
+dissect_mbus_ell(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 {
+    /* Reject the packet if data is NULL */
+    if (data == NULL) {
+        return 0;
+    }
+    mbus_packet_info_t* mbus_info = (mbus_packet_info_t*)data;
+
     int offset = 0;
 
     /* Create the protocol tree */
@@ -169,10 +191,10 @@ dissect_mbus_ell(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
             dissect_extended_link_layer_2(tvb, pinfo, mbus_ell_tree, &offset);
             break;
         case ExtendedLinkLayer3:
-            dissect_extended_link_layer_3(tvb, pinfo, mbus_ell_tree, &offset);
+            dissect_extended_link_layer_3(tvb, pinfo, mbus_ell_tree, &offset, mbus_info);
             break;
         case ExtendedLinkLayer4:
-            dissect_extended_link_layer_4(tvb, pinfo, mbus_ell_tree, &offset);
+            dissect_extended_link_layer_4(tvb, pinfo, mbus_ell_tree, &offset, mbus_info);
             break;
     }
 
@@ -184,9 +206,19 @@ dissect_mbus_ell(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
         cifield = tvb_get_uint8(tvb, offset);
         tvbuff_t* new_tvb = tvb_new_subset_length(tvb, offset, tvb_reported_length_remaining(tvb, offset));
         if (cifield == AuthenticationFragmentationLayer) {
+            /* Do not update the pinfo addresses with the ELL3 destination before calling the AFL:
+             * fragments are reassembled keyed on the pinfo addresses and not every fragment of a
+             * message carries an ELL3 destination (a sender may mix ELL types within one message),
+             * so the addresses must stay at their link layer values until after reassembly. */
             call_dissector_with_data(mbus_afl_handle, new_tvb, pinfo, proto_tree_get_root(tree), data);
+            if (mbus_info->wireless && mbus_info->wireless_info.destination_present) {
+                mbus_set_address_from_info(pinfo, mbus_info);
+            }
         }
         else {
+            if (mbus_info->wireless && mbus_info->wireless_info.destination_present) {
+                mbus_set_address_from_info(pinfo, mbus_info);
+            }
             call_dissector_with_data(mbus_tpl_handle, new_tvb, pinfo, proto_tree_get_root(tree), data);
         }
     }
