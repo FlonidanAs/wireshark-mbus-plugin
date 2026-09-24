@@ -233,4 +233,17 @@ void mbus_set_dtls_conversation(packet_info *pinfo, const mbus_packet_info_t *mb
     }
 
     conversation_set_conv_addr_port_endpoints(pinfo, &meter_addr, &other_addr, CONVERSATION_NONE, 0, 0);
+
+    // The DTLS dissector determines the packet direction by comparing pinfo->src
+    // with the server address it recorded from pinfo->dst of the ClientHello.
+    // The dissected wM-Bus addresses are not symmetric (e.g. "M:<meter>" -> "O" but
+    // "O:<other>" -> "M:<meter>"), so use the conversation endpoints instead.
+    // The caller is responsible for saving and restoring pinfo->src and pinfo->dst.
+    if (mbus_is_msg_from_meter(mbus_info->cfield)) {
+        copy_address_shallow(&pinfo->src, &meter_addr);
+        copy_address_shallow(&pinfo->dst, &other_addr);
+    } else {
+        copy_address_shallow(&pinfo->src, &other_addr);
+        copy_address_shallow(&pinfo->dst, &meter_addr);
+    }
 }
