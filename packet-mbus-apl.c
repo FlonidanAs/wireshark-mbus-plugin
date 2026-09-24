@@ -812,8 +812,14 @@ static int dissect_mbus_apl(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 
     if (check_dtls_record(apl_data)) {
         if (dtls_handle != NULL) {
+            // Keep the dissected addresses for display, DTLS needs the conversation endpoints.
+            address saved_src, saved_dst;
+            copy_address_shallow(&saved_src, &pinfo->src);
+            copy_address_shallow(&saved_dst, &pinfo->dst);
             mbus_set_dtls_conversation(pinfo, apl_data);
             call_dissector(dtls_handle, tvb, pinfo, proto_tree_get_root(tree));
+            copy_address_shallow(&pinfo->src, &saved_src);
+            copy_address_shallow(&pinfo->dst, &saved_dst);
         }
         return tvb_captured_length(tvb);
     }
