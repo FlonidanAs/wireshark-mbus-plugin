@@ -139,6 +139,14 @@ dissect_mbus_ell(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
     /* Set end of protocol tree */
     proto_item_set_end(proto_root, tvb, offset);
 
+    /* A message can consist of only the ELL, e.g. a REQ_UD2 with an ELL3 destination */
+    if (tvb_reported_length_remaining(tvb, offset) <= 0) {
+        if (mbus_info->wireless && mbus_info->wireless_info.destination_present) {
+            mbus_set_address_from_info(pinfo, mbus_info);
+        }
+        return tvb_captured_length(tvb);
+    }
+
     /* Call mbus AFL or TPL dissector. Depends on the CI Field */
     cifield = tvb_get_uint8(tvb, offset);
     tvbuff_t* new_tvb = tvb_new_subset_length(tvb, offset, tvb_reported_length_remaining(tvb, offset));
