@@ -82,56 +82,67 @@ static const value_string mbus_cfield_primary_to_seconday_function_alternatice_n
 /* CField Function */
 static const value_string mbus_cfield_secondary_to_primary_function_names[] = {
     { 0x00, "ACK" },
+    { 0x01, "NACK" },
     { 0x06, "CNF_IR" },
     { 0x08, "RSP_UD" },
     { 0, NULL }
 };
 
-/* CField flags master to slave */
+/* CField flags master to slave, the function is added separately */
 static int* const cfield_master_to_slave_flags[] = {
-    &hf_mbus_cfield_primary_to_secondary_function,
     &hf_mbus_cfield_fcv,
     &hf_mbus_cfield_fcb,
     &hf_mbus_cfield_direction,
     NULL
 };
 
-/* CField flags slave to master */
+/* CField flags slave to master, the function is added separately */
 static int* const cfield_slave_to_master_flags[] = {
-    &hf_mbus_cfield_secondary_to_primary_function,
     &hf_mbus_cfield_dfc,
     &hf_mbus_cfield_acd,
     &hf_mbus_cfield_direction,
     NULL
 };
 
+static const char* mbus_cfield_function_name(uint8_t cfield)
+{
+    uint8_t function = cfield & MBUS_C_FIELD_FUNC_MASK;
+    if (!(cfield & MBUS_C_FIELD_DIR_MASK)) {
+        return try_val_to_str(function, mbus_cfield_secondary_to_primary_function_names);
+    }
+    if (!(cfield & MBUS_C_FIELD_FCV_DFC_MASK)) {
+        // Some functions have an alternative name when the FCV field is cleared, for example a
+        // SND_UD with a cleared FCV field is called SND_UD2.
+        // NEN-EN 13757-4 (2024), Table 34 Function codes of the C-field in messages sent from
+        // primary stations
+        const char *name = try_val_to_str(function, mbus_cfield_primary_to_seconday_function_alternatice_names);
+        if (name != NULL) {
+            return name;
+        }
+    }
+    return try_val_to_str(function, mbus_cfield_primary_to_seconday_function_names);
+}
+
 uint8_t mbus_dissect_cfield(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int* offset)
 {
     uint8_t cfield = tvb_get_uint8(tvb, *offset);
-    if (cfield & MBUS_C_FIELD_DIR_MASK) {
-        proto_tree_add_bitmask(tree, tvb, *offset, hf_mbus_cfield, ett_mbus_cfield, cfield_master_to_slave_flags, ENC_NA);
-        for (size_t i = 0; i < array_length(mbus_cfield_primary_to_seconday_function_names); i++) {
-            if (mbus_cfield_primary_to_seconday_function_names[i].value == (cfield & MBUS_C_FIELD_FUNC_MASK)) {
-                if (mbus_cfield_primary_to_seconday_function_names[i].value == 0x03 && !(cfield & MBUS_C_FIELD_FCV_DFC_MASK)) {
-                    // Special case for SND_UD, as it could be an SND_UD2 depending on the FCB flag
-                    // NEN-EN 13757-4 (2024) states that a SND_UD with a cleared FCV field be called SND_UD2
-                    // Table 34 Function codes of the C-field in messages sent from primary stations
-                    col_append_sep_str(pinfo->cinfo, COL_INFO, NULL, mbus_cfield_primary_to_seconday_function_alternatice_names[0].strptr);
-                    break;
-                }
-                col_append_sep_str(pinfo->cinfo, COL_INFO, NULL, mbus_cfield_primary_to_seconday_function_names[i].strptr);
-                break;
-            }
-        }
-    }
-    else {
-        proto_tree_add_bitmask(tree, tvb, *offset, hf_mbus_cfield, ett_mbus_cfield, cfield_slave_to_master_flags, ENC_NA);
-        for (size_t i = 0; i < array_length(mbus_cfield_secondary_to_primary_function_names); i++) {
-            if (mbus_cfield_secondary_to_primary_function_names[i].value == (cfield & MBUS_C_FIELD_FUNC_MASK)) {
-                col_append_sep_str(pinfo->cinfo, COL_INFO, NULL, mbus_cfield_secondary_to_primary_function_names[i].strptr);
-                break;
-            }
-        }
+    bool primary = (cfield & MBUS_C_FIELD_DIR_MASK) != 0;
+    const char *function_name = mbus_cfield_function_name(cfield);
+
+    // The function name depends on the FCV bit as well as the function bits, so it
+    // can't be resolved by a value_string on the function field alone.
+    proto_item *cfield_item = proto_tree_add_item(tree, hf_mbus_cfield, tvb, *offset, 1, ENC_NA);
+    proto_item_append_text(cfield_item, ", Function: %s", function_name != NULL ? function_name : "Unknown");
+    proto_tree *cfield_tree = proto_item_add_subtree(cfield_item, ett_mbus_cfield);
+    proto_tree_add_uint_format_value(cfield_tree,
+        primary ? hf_mbus_cfield_primary_to_secondary_function : hf_mbus_cfield_secondary_to_primary_function,
+        tvb, *offset, 1, cfield, "%s (0x%x)", function_name != NULL ? function_name : "Unknown",
+        cfield & MBUS_C_FIELD_FUNC_MASK);
+    proto_tree_add_bitmask_list(cfield_tree, tvb, *offset, 1,
+        primary ? cfield_master_to_slave_flags : cfield_slave_to_master_flags, ENC_NA);
+
+    if (function_name != NULL) {
+        col_append_sep_str(pinfo->cinfo, COL_INFO, NULL, function_name);
     }
     *offset += 1;
     return cfield;
