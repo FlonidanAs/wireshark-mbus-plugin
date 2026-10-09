@@ -12,6 +12,7 @@
  */
 #include <epan/packet.h>
 #include <epan/prefs.h>
+#include <epan/unit_strings.h>
 #include <stdint.h>
 
 #define dsmr6_protocol_id_names_VALUE_STRING_LIST(XXX) \
@@ -47,7 +48,8 @@ static value_string_ext dsmr6_protocol_id_names_ext = VALUE_STRING_EXT_INIT(dsmr
     XXX(DSMR6_MESSAGE_CODE_READ_ATTRIBUTES,                       70, "Read Attributes") \
     XXX(DSMR6_MESSAGE_CODE_READ_ATTRIBUTES_RESPONSE,              71, "Read Attributes Response") \
     XXX(DSMR6_MESSAGE_CODE_WRITE_ATTRIBUTES,                      80, "Write Attributes") \
-    XXX(DSMR6_MESSAGE_CODE_WRITE_ATTRIBUTES_RESPONSE,             81, "Write Attributes Response")
+    XXX(DSMR6_MESSAGE_CODE_WRITE_ATTRIBUTES_RESPONSE,             81, "Write Attributes Response") \
+    XXX(DSMR6_MESSAGE_CODE_PUSH_TEST_MODE,                        110, "Push Test Mode")
 
 VALUE_STRING_ENUM(dsmr6_message_codes);
 VALUE_STRING_ARRAY(dsmr6_message_codes);
@@ -61,7 +63,7 @@ static value_string_ext dsmr6_message_codes_ext = VALUE_STRING_EXT_INIT(dsmr6_me
     XXX(DSMR6_STATUS_READ_ONLY,             4, "Read Only") \
     XXX(DSMR6_STATUS_WRITE_ONLY,            5, "Write Only") \
     XXX(DSMR6_STATUS_INVALID_DATA_TYPE,     6, "Invalid Data Type") \
-    XXX(DSMR6_STATUS_UNSUPPORTED_COMMAND,   7, "Unsupported Command") \
+    XXX(DSMR6_STATUS_UNSUPPORTED_COMMAND,   7, "Unsupported Command")
 
 VALUE_STRING_ENUM(dsmr6_status_names);
 VALUE_STRING_ARRAY(dsmr6_status_names);
@@ -122,7 +124,8 @@ static int hf_dsmr6_message_code;
 static int hf_dsmr6_message_length;
 static int hf_dsmr6_date_time;
 static int hf_dsmr6_equipment_id;
-static int hf_dsmr6_volume;
+static int hf_dsmr6_volume_liters;
+static int hf_dsmr6_volume_milliliters;
 static int hf_dsmr6_amr_status_byte;
 static int hf_dsmr6_signature_length;
 static int hf_dsmr6_signature;
@@ -175,12 +178,20 @@ static int hf_dsmr6_attribute_event_byte;
 static int hf_dsmr6_attribute_frequent_access_cycle;
 static int hf_dsmr6_attribute_orphan_timeout_period;
 static int hf_dsmr6_attribute_certificate_expiration_warning;
+static int hf_dsmr6_push_test_mode_volume_milliliters;
+static int hf_dsmr6_push_test_mode_gas_flow;
+static int hf_dsmr6_push_test_mode_gas_temperature;
+static int hf_dsmr6_push_test_mode_measurement_status;
 
 static int ett_dsmr6;
 static int ett_dsmr6_header;
 static int ett_dsmr6_payload;
 static int ett_dsmr6_billing_log_entries;
 static int ett_dsmr6_read_attributes_response_entries;
+
+static const unit_name_string dsmr6_units_liter = { "L", NULL };
+static const unit_name_string dsmr6_units_milliliter = { "mL", NULL };
+static const unit_name_string dsmr6_units_liter_per_hour = { "L/h", NULL };
 
 static void dissect_default_response(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int* offset)
 {
@@ -194,9 +205,9 @@ static void dissect_billing_push(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tr
 {
     proto_tree_add_item(tree, hf_dsmr6_date_time, tvb, *offset, 4, ENC_TIME_ZBEE_ZCL | ENC_LITTLE_ENDIAN);
     *offset += 4;
-    proto_tree_add_item(tree, hf_dsmr6_equipment_id, tvb, *offset, 17, ENC_LITTLE_ENDIAN);
+    proto_tree_add_item(tree, hf_dsmr6_equipment_id, tvb, *offset, 17, ENC_NA);
     *offset += 17;
-    proto_tree_add_item(tree, hf_dsmr6_volume, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
+    proto_tree_add_item(tree, hf_dsmr6_volume_liters, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
     *offset += 4;
     proto_tree_add_item(tree, hf_dsmr6_amr_status_byte, tvb, *offset, 1, ENC_NA);
     *offset += 1;
@@ -217,7 +228,7 @@ static void dissect_periodic_push_no_signature(tvbuff_t *tvb, packet_info *pinfo
 {
     proto_tree_add_item(tree, hf_dsmr6_date_time, tvb, *offset, 4, ENC_TIME_ZBEE_ZCL | ENC_LITTLE_ENDIAN);
     *offset += 4;
-    proto_tree_add_item(tree, hf_dsmr6_volume, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
+    proto_tree_add_item(tree, hf_dsmr6_volume_liters, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
     *offset += 4;
     proto_tree_add_item(tree, hf_dsmr6_temperature, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
     *offset += 2;
@@ -247,9 +258,9 @@ static void dissect_read_billing_log_response(tvbuff_t *tvb, packet_info *pinfo 
 
         proto_tree_add_item(entry_tree, hf_dsmr6_date_time, tvb, *offset, 4, ENC_TIME_ZBEE_ZCL | ENC_LITTLE_ENDIAN);
         *offset += 4;
-        proto_tree_add_item(entry_tree, hf_dsmr6_equipment_id, tvb, *offset, 17, ENC_LITTLE_ENDIAN);
+        proto_tree_add_item(entry_tree, hf_dsmr6_equipment_id, tvb, *offset, 17, ENC_NA);
         *offset += 17;
-        proto_tree_add_item(entry_tree, hf_dsmr6_volume, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
+        proto_tree_add_item(entry_tree, hf_dsmr6_volume_liters, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
         *offset += 4;
         proto_tree_add_item(entry_tree, hf_dsmr6_amr_status_byte, tvb, *offset, 1, ENC_NA);
         *offset += 1;
@@ -444,6 +455,20 @@ static void dissect_read_attributes_response(tvbuff_t *tvb, packet_info *pinfo _
     }
 }
 
+static void dissect_push_test_mode(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int *offset)
+{
+    proto_tree_add_item(tree, hf_dsmr6_equipment_id, tvb, *offset, 17, ENC_NA);
+    *offset += 17;
+    proto_tree_add_item(tree, hf_dsmr6_push_test_mode_volume_milliliters, tvb, *offset, 8, ENC_LITTLE_ENDIAN);
+    *offset += 8;
+    proto_tree_add_item(tree, hf_dsmr6_push_test_mode_gas_flow, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+    *offset += 2;
+    proto_tree_add_item(tree, hf_dsmr6_push_test_mode_gas_temperature, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+    *offset += 2;
+    proto_tree_add_item(tree, hf_dsmr6_push_test_mode_measurement_status, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+}
+
 static bool check_dsmr6_command(tvbuff_t *tvb)
 {
     int offset = 0;
@@ -530,6 +555,9 @@ dissect_dsmr6(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
             case DSMR6_MESSAGE_CODE_READ_ATTRIBUTES_RESPONSE:
                 dissect_read_attributes_response(tvb, pinfo, payload_tree, &offset);
                 break;
+            case DSMR6_MESSAGE_CODE_PUSH_TEST_MODE:
+                dissect_push_test_mode(tvb, pinfo, payload_tree, &offset);
+                break;
             default:
                 break;
         }
@@ -557,8 +585,8 @@ proto_register_dsmr6(void)
         { &hf_dsmr6_equipment_id,
             { "Equipment ID", "dsmr6.equipment_id", FT_STRING, BASE_NONE, NULL,
               0x00, NULL, HFILL } },
-        { &hf_dsmr6_volume,
-            { "Volume", "dsmr6.volume", FT_UINT32, BASE_DEC, NULL,
+        { &hf_dsmr6_volume_liters,
+            { "Volume", "dsmr6.volume", FT_UINT32, BASE_DEC | BASE_UNIT_STRING, UNS(&dsmr6_units_liter),
               0x00, NULL, HFILL } },
         { &hf_dsmr6_amr_status_byte,
             { "AMR Status Byte", "dsmr6.amr_status_byte", FT_UINT8, BASE_HEX, NULL,
@@ -690,7 +718,7 @@ proto_register_dsmr6(void)
             { "Gas Temperature", "dsmr6.read_attributes_response.attr_gas_temperature", FT_UINT16, BASE_DEC, NULL,
               0x00, NULL, HFILL } },
         { &hf_dsmr6_attribute_gas_flow,
-            { "Gas Flow", "dsmr6.read_attributes_response.attr_gas_flow", FT_UINT16, BASE_DEC, NULL,
+            { "Gas Flow", "dsmr6.read_attributes_response.attr_gas_flow", FT_UINT16, BASE_DEC | BASE_UNIT_STRING, UNS(&dsmr6_units_liter_per_hour),
               0x00, NULL, HFILL } },
         { &hf_dsmr6_attribute_meter_index_value,
             { "Meter Index Value", "dsmr6.read_attributes_response.attr_meter_index_value", FT_UINT32, BASE_DEC, NULL,
@@ -715,6 +743,18 @@ proto_register_dsmr6(void)
               0x00, NULL, HFILL } },
         { &hf_dsmr6_attribute_certificate_expiration_warning,
             { "Certificate Expiration Warning", "dsmr6.read_attributes_response.attr_certificate_expiration_warning", FT_UINT8, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_push_test_mode_volume_milliliters,
+            { "Volume", "dsmr6.push_test_mode.volume_milliliters", FT_UINT64, BASE_DEC | BASE_UNIT_STRING, UNS(&dsmr6_units_milliliter),
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_push_test_mode_gas_flow,
+            { "Gas Flow", "dsmr6.push_test_mode.gas_flow", FT_UINT16, BASE_DEC | BASE_UNIT_STRING, UNS(&dsmr6_units_liter_per_hour),
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_push_test_mode_gas_temperature,
+            { "Gas Temperature", "dsmr6.push_test_mode.gas_temperature", FT_UINT16, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_push_test_mode_measurement_status,
+            { "Measurement Status", "dsmr6.push_test_mode.measurement_status", FT_UINT8, BASE_DEC, NULL,
               0x00, NULL, HFILL } },
     };
 
