@@ -125,7 +125,6 @@ static int hf_dsmr6_message_length;
 static int hf_dsmr6_date_time;
 static int hf_dsmr6_equipment_id;
 static int hf_dsmr6_volume_liters;
-static int hf_dsmr6_volume_milliliters;
 static int hf_dsmr6_amr_status_byte;
 static int hf_dsmr6_signature_length;
 static int hf_dsmr6_signature;
