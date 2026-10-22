@@ -125,7 +125,8 @@ typedef struct {
     XXX(SetBaudRateTo38400Baud,                         0xBF, "Set BaudRate To 38400 Baud") \
     XXX(ImageTransferCommandLongHeader,                 0xC0, "Image Transfer Command Long Header") \
     XXX(ImageTransferResponseShortHeader,               0xC1, "Image Transfer Response Short Header") \
-    XXX(ImageTransferResponseLongHeader,                0xC2, "Image Transfer Response Long Header")
+    XXX(ImageTransferResponseLongHeader,                0xC2, "Image Transfer Response Long Header") \
+    XXX(ImageTransferCommandShortHeader,                0xC7, "Image Transfer Command Short Header")
     /*(Reserved, 0xC0-0xFF, "Reserved") */
 
 VALUE_STRING_ENUM(mbus_ci_field_names);
@@ -152,4 +153,3 @@ void mbus_get_dst_address_from_info(const mbus_packet_info_t* packet_info, char*
 void mbus_set_dtls_conversation(packet_info *pinfo, const mbus_packet_info_t *mbus_info);
 
 #endif /* PACKET_MBUS_COMMON_H */
-

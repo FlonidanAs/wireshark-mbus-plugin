@@ -44,6 +44,7 @@ bool mbus_is_compact_frame_ci_field(uint8_t ciField)
 bool mbus_is_image_transfer_ci_field(uint8_t ciField)
 {
     return (ciField == ImageTransferCommandLongHeader) ||
+           (ciField == ImageTransferCommandShortHeader) ||
            (ciField == ImageTransferResponseShortHeader) ||
            (ciField == ImageTransferResponseLongHeader);
 }
