@@ -86,7 +86,8 @@ static const CiFieldTPLHeader_t ci_field_tpl_header[] = {
     { SetBaudRateTo38400Baud, TPL_HEADER_BLANK },
     { ImageTransferCommandLongHeader, TPL_HEADER_LONG },
     { ImageTransferResponseShortHeader, TPL_HEADER_SHORT },
-    { ImageTransferResponseLongHeader, TPL_HEADER_LONG }
+    { ImageTransferResponseLongHeader, TPL_HEADER_LONG },
+    { ImageTransferCommandShortHeader, TPL_HEADER_SHORT }
 };
 
 static const value_string mbus_config_ext_mode_13_names[] = {

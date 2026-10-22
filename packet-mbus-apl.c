@@ -11,6 +11,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 #include <epan/packet.h>
+#include <epan/expert.h>
+#include <epan/tfs.h>
 #include <epan/prefs.h>
 #include <epan/proto_data.h>
 #include <wsutil/time_util.h>
@@ -80,6 +82,59 @@ VALUE_STRING_ENUM(mbus_ita_function_field_names);
 VALUE_STRING_ARRAY(mbus_ita_function_field_names);
 static value_string_ext mbus_ita_function_field_names_ext = VALUE_STRING_EXT_INIT(mbus_ita_function_field_names);
 
+static const value_string mbus_ita_state_names[] = {
+    { 0, "Synchronization activated" },
+    { 1, "Synchronization terminated" },
+    { 2, "Transfer initiated" },
+    { 3, "Transfer active" },
+    { 4, "Transfer terminated" },
+    { 5, "Transfer successful" },
+    { 6, "Transfer failed" },
+    { 7, "Validation initiated" },
+    { 8, "Validation active" },
+    { 9, "Validation successful" },
+    { 10, "Validation failed" },
+    { 11, "Activation initiated" },
+    { 12, "Activation successful" },
+    { 13, "Activation failed" },
+    { 14, "Image transfer terminated" },
+    { 15, "Idle" },
+    { 0, NULL }
+};
+
+static const value_string mbus_ita_preparation_result_names[] = {
+    { 0, "Accepted" },
+    { 1, "Software version rejected" },
+    { 2, "Minimum software version not met" },
+    { 3, "Minimum hardware version not met" },
+    { 4, "Software update disabled" },
+    { 5, "Image type or update protocol unsupported" },
+    { 6, "Image too large" },
+    { 7, "Other error" },
+    { 0, NULL }
+};
+
+static const value_string mbus_ita_sequence_names[] = {
+    { 0, "Not used" },
+    { 1, "First block" },
+    { 2, "Intermediate block" },
+    { 3, "Last block" },
+    { 0, NULL }
+};
+
+static const value_string mbus_ita_mac_algorithm_names[] = {
+    { 1, "HMAC-SHA256 (8 bytes)" },
+    { 2, "HMAC-SHA256 (16 bytes)" },
+    { 3, "AES128-CMAC (8 bytes)" },
+    { 4, "AES128-CMAC (16 bytes)" },
+    { 5, "AES128-GMAC (12 bytes)" },
+    { 0, NULL }
+};
+
+static const true_false_string mbus_ita_not_ready = {
+    "Not ready", "Ready"
+};
+
 /*************************/
 /* Function Declarations */
 /*************************/
@@ -134,6 +189,56 @@ static int hf_mbus_ita_segment_id;
 static int hf_mbus_ita_segment_function_field;
 static int hf_mbus_ita_segment_sub_function_field;
 static int hf_mbus_ita_segment_payload;
+static int hf_mbus_ita_prepare_info;
+static int hf_mbus_ita_prepare_multicast;
+static int hf_mbus_ita_prepare_identity;
+static int hf_mbus_ita_prepare_size;
+static int hf_mbus_ita_prepare_absolute;
+static int hf_mbus_ita_prepare_mac;
+static int hf_mbus_ita_prepare_response_info;
+static int hf_mbus_ita_prepare_response_multicast;
+static int hf_mbus_ita_prepare_response_identity;
+static int hf_mbus_ita_prepare_response_not_ready;
+static int hf_mbus_ita_prepare_response_size;
+static int hf_mbus_ita_preparation_result;
+static int hf_mbus_ita_transfer_remaining;
+static int hf_mbus_ita_transfer_identity;
+static int hf_mbus_ita_transfer_sequence;
+static int hf_mbus_ita_transfer_info;
+static int hf_mbus_ita_command_identity;
+static int hf_mbus_ita_command_info;
+static int hf_mbus_ita_activate_absolute;
+static int hf_mbus_ita_response_identity;
+static int hf_mbus_ita_response_state;
+static int hf_mbus_ita_completion_identity;
+static int hf_mbus_ita_completion_total;
+static int hf_mbus_ita_completion_lost;
+static int hf_mbus_ita_completion_none;
+static int hf_mbus_ita_image_identifier;
+static int hf_mbus_ita_manufacturer;
+static int hf_mbus_ita_version;
+static int hf_mbus_ita_device_type;
+static int hf_mbus_ita_manufacturer_image_id;
+static int hf_mbus_ita_block_count;
+static int hf_mbus_ita_block_size;
+static int hf_mbus_ita_repetition;
+static int hf_mbus_ita_date_time;
+static int hf_mbus_ita_delay;
+static int hf_mbus_ita_pace;
+static int hf_mbus_ita_mac_algorithm;
+static int hf_mbus_ita_key_id;
+static int hf_mbus_ita_key_version;
+static int hf_mbus_ita_mac_value;
+static int hf_mbus_ita_additional_info;
+static int hf_mbus_ita_block_number;
+static int hf_mbus_ita_remaining;
+static int hf_mbus_ita_image_block;
+static int hf_mbus_ita_total_lost;
+static int hf_mbus_ita_lost_block;
+
+static expert_field ei_mbus_ita_length = EI_INIT;
+static expert_field ei_mbus_ita_parameters = EI_INIT;
+static expert_field ei_mbus_ita_trailing = EI_INIT;
 
 // "Special" VIFs
 static int hf_mbus_vif_bytes;
@@ -150,7 +255,7 @@ static int hf_mbus_vif_upgrade_cancel;
 static int hf_mbus_vif_upgrade_block_status;
 
 /* Initialize the subtree pointers */
-#define MBUS_NUM_INDIVIDUAL_ETT                 5
+#define MBUS_NUM_INDIVIDUAL_ETT                 8
 #define MBUS_NUM_MBUS_APP_BLOCK_ETT             10
 #define MBUS_NUM_TOTAL_ETT                      (MBUS_NUM_INDIVIDUAL_ETT + MBUS_NUM_MBUS_APP_BLOCK_ETT)
 
@@ -159,6 +264,9 @@ static int ett_mbus_dif;
 static int ett_mbus_dife;
 static int ett_mbus_vif;
 static int ett_mbus_vife;
+static int ett_mbus_ita_segment;
+static int ett_mbus_ita_sub_function;
+static int ett_mbus_ita_identity;
 static int ett_mbus_long_frame_app_block[MBUS_NUM_MBUS_APP_BLOCK_ETT];
 
 /* MBus DIF */
@@ -690,70 +798,339 @@ static void dissect_mbus_compact_frame(tvbuff_t *tvb, packet_info *pinfo, proto_
     col_append_sep_str(pinfo->cinfo, COL_INFO, NULL, "Compact frame");
 }
 
+static bool mbus_ita_check_parameters(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int required)
+{
+    int length = tvb_reported_length(tvb);
+    if (length < required) {
+        proto_tree_add_expert_format(tree, pinfo, &ei_mbus_ita_parameters, tvb, 2, length - 2,
+                                    "Image transfer parameters require %d bytes, segment provides %d",
+                                    required - 3, length - 3);
+        if (length > 3) {
+            proto_tree_add_item(tree, hf_mbus_ita_segment_payload, tvb, 3, length - 3, ENC_NA);
+        }
+        return false;
+    }
+    return true;
+}
+
+static void dissect_mbus_ita_identity(tvbuff_t *tvb, proto_tree *tree, int *offset)
+{
+    proto_item* item = proto_tree_add_item(tree, hf_mbus_ita_image_identifier, tvb, *offset, 8, ENC_NA);
+    proto_tree* identity_tree = proto_item_add_subtree(item, ett_mbus_ita_identity);
+    proto_tree_add_item(identity_tree, hf_mbus_ita_manufacturer, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+    *offset += 2;
+    proto_tree_add_item(identity_tree, hf_mbus_ita_version, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+    proto_tree_add_item(identity_tree, hf_mbus_ita_device_type, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+    proto_tree_add_item(identity_tree, hf_mbus_ita_manufacturer_image_id, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
+    *offset += 4;
+}
+
+static void dissect_mbus_ita_size(tvbuff_t *tvb, proto_tree *tree, int *offset)
+{
+    proto_tree_add_item(tree, hf_mbus_ita_block_count, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+    *offset += 2;
+    proto_tree_add_item(tree, hf_mbus_ita_block_size, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+    *offset += 2;
+    proto_tree_add_item(tree, hf_mbus_ita_repetition, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+}
+
+static void dissect_mbus_ita_time(tvbuff_t *tvb, proto_tree *tree, int *offset, bool absolute, bool activation)
+{
+    uint32_t seconds = tvb_get_uint32(tvb, *offset, ENC_LITTLE_ENDIAN);
+    if (absolute) {
+        /* Annex I uses seconds since 2013-01-01, not the Unix epoch. */
+        nstime_t time = NSTIME_INIT_SECS((time_t)(INT64_C(1356998400) + seconds));
+        proto_tree_add_time(tree, hf_mbus_ita_date_time, tvb, *offset, 4, &time);
+    }
+    else {
+        proto_item* item = proto_tree_add_item(tree, hf_mbus_ita_delay, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
+        if (activation && seconds == 0) {
+            proto_item_append_text(item, " (Immediate activation)");
+        }
+    }
+    *offset += 4;
+}
+
+static int dissect_mbus_ita_prepare(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, uint8_t sf)
+{
+    static int* const flags[] = {
+        &hf_mbus_ita_prepare_info, &hf_mbus_ita_prepare_multicast, &hf_mbus_ita_prepare_identity,
+        &hf_mbus_ita_prepare_size, &hf_mbus_ita_prepare_absolute, &hf_mbus_ita_prepare_mac, NULL
+    };
+    int offset = 3;
+    int required = offset + ((sf & 0x10) ? 5 : 0) + ((sf & 0x04) ? 5 : 0) +
+                   ((sf & 0x08) ? 8 : 0) + ((sf & 0x01) ? 19 : 0) + ((sf & 0x20) ? 2 : 0);
+    proto_tree_add_bitmask(tree, tvb, 2, hf_mbus_ita_segment_sub_function_field, ett_mbus_ita_sub_function, flags, ENC_NA);
+    if (!mbus_ita_check_parameters(tvb, pinfo, tree, required)) {
+        return tvb_reported_length(tvb);
+    }
+    if (sf & 0x10) {
+        dissect_mbus_ita_time(tvb, tree, &offset, (sf & 0x02) != 0, false);
+        proto_tree_add_item(tree, hf_mbus_ita_pace, tvb, offset, 1, ENC_NA);
+        offset++;
+    }
+    if (sf & 0x04) {
+        dissect_mbus_ita_size(tvb, tree, &offset);
+    }
+    if (sf & 0x08) {
+        dissect_mbus_ita_identity(tvb, tree, &offset);
+    }
+    if (sf & 0x01) {
+        proto_tree_add_item(tree, hf_mbus_ita_mac_algorithm, tvb, offset, 1, ENC_NA);
+        offset++;
+        proto_tree_add_item(tree, hf_mbus_ita_key_id, tvb, offset, 1, ENC_NA);
+        offset++;
+        proto_tree_add_item(tree, hf_mbus_ita_key_version, tvb, offset, 1, ENC_NA);
+        offset++;
+        proto_tree_add_item(tree, hf_mbus_ita_mac_value, tvb, offset, 16, ENC_NA);
+        offset += 16;
+    }
+    if (sf & 0x20) {
+        proto_tree_add_item(tree, hf_mbus_ita_additional_info, tvb, offset, 2, ENC_NA);
+        offset += 2;
+    }
+    return offset;
+}
+
+static int dissect_mbus_ita_prepare_response(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, uint8_t sf)
+{
+    static int* const flags[] = {
+        &hf_mbus_ita_prepare_response_multicast, &hf_mbus_ita_prepare_response_identity,
+        &hf_mbus_ita_prepare_response_not_ready, &hf_mbus_ita_prepare_response_size,
+        &hf_mbus_ita_prepare_response_info, NULL
+    };
+    int offset = 3;
+    int required = offset + 1 + ((sf & 0x08) ? 8 : 0) + ((sf & 0x02) ? 5 : 0) + ((sf & 0x01) ? 2 : 0);
+    proto_tree_add_bitmask(tree, tvb, 2, hf_mbus_ita_segment_sub_function_field, ett_mbus_ita_sub_function, flags, ENC_NA);
+    if (!mbus_ita_check_parameters(tvb, pinfo, tree, required)) {
+        return tvb_reported_length(tvb);
+    }
+    proto_tree_add_item(tree, hf_mbus_ita_preparation_result, tvb, offset, 1, ENC_NA);
+    offset++;
+    if (sf & 0x08) {
+        dissect_mbus_ita_identity(tvb, tree, &offset);
+    }
+    if (sf & 0x02) {
+        dissect_mbus_ita_size(tvb, tree, &offset);
+    }
+    if (sf & 0x01) {
+        proto_tree_add_item(tree, hf_mbus_ita_additional_info, tvb, offset, 2, ENC_NA);
+        offset += 2;
+    }
+    return offset;
+}
+
+static int dissect_mbus_ita_transfer(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, uint8_t sf)
+{
+    static int * const flags[] = {
+        &hf_mbus_ita_transfer_remaining, &hf_mbus_ita_transfer_identity,
+        &hf_mbus_ita_transfer_sequence, &hf_mbus_ita_transfer_info, NULL
+    };
+    int offset = 3;
+    int required = offset + ((sf & 0x08) ? 8 : 0) + 2 + ((sf & 0x10) ? 2 : 0) + ((sf & 0x01) ? 2 : 0);
+    proto_tree_add_bitmask(tree, tvb, 2, hf_mbus_ita_segment_sub_function_field, ett_mbus_ita_sub_function, flags, ENC_NA);
+    if (!mbus_ita_check_parameters(tvb, pinfo, tree, required)) {
+        return tvb_reported_length(tvb);
+    }
+    if (sf & 0x08) {
+        dissect_mbus_ita_identity(tvb, tree, &offset);
+    }
+    proto_tree_add_item(tree, hf_mbus_ita_block_number, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+    offset += 2;
+    if (sf & 0x10) {
+        proto_tree_add_item(tree, hf_mbus_ita_remaining, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+    }
+    if (sf & 0x01) {
+        proto_tree_add_item(tree, hf_mbus_ita_additional_info, tvb, offset, 2, ENC_NA);
+        offset += 2;
+    }
+    proto_tree_add_item(tree, hf_mbus_ita_image_block, tvb, offset, tvb_reported_length_remaining(tvb, offset), ENC_NA);
+    return tvb_reported_length(tvb);
+}
+
+static int dissect_mbus_ita_simple_command(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, uint8_t sf)
+{
+    static int* const flags[] = {
+        &hf_mbus_ita_command_identity, &hf_mbus_ita_command_info, NULL
+    };
+    int offset = 3;
+    int required = offset + ((sf & 0x02) ? 8 : 0) + ((sf & 0x01) ? 2 : 0);
+    proto_tree_add_bitmask(tree, tvb, 2, hf_mbus_ita_segment_sub_function_field, ett_mbus_ita_sub_function, flags, ENC_NA);
+    if (!mbus_ita_check_parameters(tvb, pinfo, tree, required)) {
+        return tvb_reported_length(tvb);
+    }
+    if (sf & 0x02) {
+        dissect_mbus_ita_identity(tvb, tree, &offset);
+    }
+    if (sf & 0x01) {
+        proto_tree_add_item(tree, hf_mbus_ita_additional_info, tvb, offset, 2, ENC_NA);
+        offset += 2;
+    }
+    return offset;
+}
+
+static int dissect_mbus_ita_completion_response(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, uint8_t sf)
+{
+    static int * const flags[] = {
+        &hf_mbus_ita_completion_identity, &hf_mbus_ita_completion_total,
+        &hf_mbus_ita_completion_lost, &hf_mbus_ita_completion_none, NULL
+    };
+    int offset = 3;
+    int required = offset + ((sf & 0x08) ? 8 : 0) + ((sf & 0x04) ? 2 : 0) + ((sf & 0x02) ? 2 : 0);
+    proto_tree_add_bitmask(tree, tvb, 2, hf_mbus_ita_segment_sub_function_field, ett_mbus_ita_sub_function, flags, ENC_NA);
+    if (!mbus_ita_check_parameters(tvb, pinfo, tree, required)) {
+        return tvb_reported_length(tvb);
+    }
+    if (sf & 0x08) {
+        dissect_mbus_ita_identity(tvb, tree, &offset);
+    }
+    if (sf & 0x04) {
+        proto_tree_add_item(tree, hf_mbus_ita_total_lost, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+    }
+    if (sf & 0x02) {
+        while (tvb_reported_length_remaining(tvb, offset) >= 2) {
+            uint16_t lost_block = tvb_get_uint16(tvb, offset, ENC_LITTLE_ENDIAN);
+            proto_item* item = proto_tree_add_item(tree, hf_mbus_ita_lost_block, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+            if (lost_block == 0xFFFF) {
+                proto_item_append_text(item, " (All subsequent blocks missing (all blocks if first entry))");
+            }
+        }
+        if (tvb_reported_length_remaining(tvb, offset) != 0) {
+            proto_tree_add_expert(tree, pinfo, &ei_mbus_ita_parameters, tvb, offset, 1);
+            proto_tree_add_item(tree, hf_mbus_ita_segment_payload, tvb, offset, 1, ENC_NA);
+            offset++;
+        }
+    }
+    return offset;
+}
+
+static int dissect_mbus_ita_state_response(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, uint8_t sf)
+{
+    static int* const flags[] = {
+        &hf_mbus_ita_response_identity, &hf_mbus_ita_response_state, NULL
+    };
+    int offset = 3;
+    proto_tree_add_bitmask(tree, tvb, 2, hf_mbus_ita_segment_sub_function_field, ett_mbus_ita_sub_function, flags, ENC_NA);
+    if (!mbus_ita_check_parameters(tvb, pinfo, tree, offset + ((sf & 0x10) ? 8 : 0))) {
+        return tvb_reported_length(tvb);
+    }
+    if (sf & 0x10) {
+        dissect_mbus_ita_identity(tvb, tree, &offset);
+    }
+    return offset;
+}
+
+static int dissect_mbus_ita_activate(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, uint8_t sf)
+{
+    static int* const flags[] = {
+        &hf_mbus_ita_command_identity, &hf_mbus_ita_activate_absolute, NULL
+    };
+    int offset = 3;
+    proto_tree_add_bitmask(tree, tvb, 2, hf_mbus_ita_segment_sub_function_field, ett_mbus_ita_sub_function, flags, ENC_NA);
+    if (!mbus_ita_check_parameters(tvb, pinfo, tree, offset + ((sf & 0x02) ? 8 : 0) + 4)) {
+        return tvb_reported_length(tvb);
+    }
+    if (sf & 0x02) {
+        dissect_mbus_ita_identity(tvb, tree, &offset);
+    }
+    dissect_mbus_ita_time(tvb, tree, &offset, (sf & 0x01) != 0, true);
+    return offset;
+}
+
+static void dissect_mbus_ita_segment(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+{
+    uint8_t function_field = tvb_get_uint8(tvb, 1);
+    uint8_t sf = tvb_get_uint8(tvb, 2);
+    int offset;
+    bool supported = true;
+
+    proto_tree_add_item(tree, hf_mbus_ita_segment_id, tvb, 0, 1, ENC_NA);
+    proto_tree_add_item(tree, hf_mbus_ita_segment_function_field, tvb, 1, 1, ENC_NA);
+    col_append_sep_fstr(pinfo->cinfo, COL_INFO, NULL, "Image transfer, %s",
+                       val_to_str_const(function_field, mbus_ita_function_field_names, "Unknown Cmd"));
+    switch (function_field) {
+        case ITA_FUNCTION_PREPARE:
+            offset = dissect_mbus_ita_prepare(tvb, pinfo, tree, sf);
+            break;
+        case ITA_FUNCTION_PREPARE_RESPONSE:
+            offset = dissect_mbus_ita_prepare_response(tvb, pinfo, tree, sf);
+            break;
+        case ITA_FUNCTION_TRANSFER:
+            offset = dissect_mbus_ita_transfer(tvb, pinfo, tree, sf);
+            break;
+        case ITA_FUNCTION_COMPLETION:
+        case ITA_FUNCTION_VALIDATE:
+            offset = dissect_mbus_ita_simple_command(tvb, pinfo, tree, sf);
+            break;
+        case ITA_FUNCTION_COMPLETION_RESPONSE:
+            offset = dissect_mbus_ita_completion_response(tvb, pinfo, tree, sf);
+            break;
+        case ITA_FUNCTION_TRANSFER_RESPONSE:
+        case ITA_FUNCTION_VALIDATE_RESPONSE:
+        case ITA_FUNCTION_ACTIVATE_RESPONSE:
+            offset = dissect_mbus_ita_state_response(tvb, pinfo, tree, sf);
+            break;
+        case ITA_FUNCTION_ACTIVATE:
+            offset = dissect_mbus_ita_activate(tvb, pinfo, tree, sf);
+            break;
+        default:
+            proto_tree_add_item(tree, hf_mbus_ita_segment_sub_function_field, tvb, 2, 1, ENC_NA);
+            offset = 3;
+            supported = false;
+            break;
+    }
+    int remaining = tvb_reported_length_remaining(tvb, offset);
+    if (remaining > 0) {
+        proto_item *item = proto_tree_add_item(tree, hf_mbus_ita_segment_payload, tvb, offset, remaining, ENC_NA);
+        if (supported) {
+            expert_add_info(pinfo, item, &ei_mbus_ita_trailing);
+        }
+    }
+}
+
 static void dissect_mbus_image_transfer(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
     int offset = 0;
 
-    proto_tree_add_item(tree, hf_mbus_ita_segment_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-    offset += 2;
+    /* Validate the envelopes first: an invalid length invalidates all segments. */
+    while (tvb_reported_length_remaining(tvb, offset) > 0) {
+        int remaining = tvb_reported_length_remaining(tvb, offset);
+        if (remaining < 2) {
+            proto_tree_add_expert(tree, pinfo, &ei_mbus_ita_length, tvb, offset, remaining);
+            return;
+        }
+        uint16_t length = tvb_get_uint16(tvb, offset, ENC_LITTLE_ENDIAN);
+        if (length < 3 || length + 2 > remaining) {
+            proto_item *item = proto_tree_add_item(tree, hf_mbus_ita_segment_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            expert_add_info_format(pinfo, item, &ei_mbus_ita_length,
+                                   "Invalid image transfer segment length %u (excludes length field); %d bytes available",
+                                   length, remaining - 2);
+            return;
+        }
+        tvb_ensure_bytes_exist(tvb, offset, length + 2);
+        offset += length + 2;
+    }
 
-    proto_tree_add_item(tree, hf_mbus_ita_segment_id, tvb, offset, 1, ENC_NA);
-    offset += 1;
-
-    uint8_t function_field = tvb_get_uint8(tvb, offset);
-    proto_tree_add_item(tree, hf_mbus_ita_segment_function_field, tvb, offset, 1, ENC_NA);
-    offset += 1;
-
-    // TODO Create different dissectors for each function field and call them from here.
-    // uint8_t sub_function_field = tvb_get_uint8(tvb, offset);
-
-    // switch (function_field) {
-    //     case ITA_FUNCTION_PREPARE:
-    //         break;
-    //     case ITA_FUNCTION_SYNCHRONIZE:
-    //         break;
-    //     case ITA_FUNCTION_TRANSFER:
-    //         break;
-    //     case ITA_FUNCTION_COMPLETION:
-    //         break;
-    //     case ITA_FUNCTION_STATE:
-    //         break;
-    //     case ITA_FUNCTION_VALIDATE:
-    //         break;
-    //     case ITA_FUNCTION_ACTIVATE:
-    //         break;
-    //     case ITA_FUNCTION_TERMINATE:
-    //         break;
-    //     case ITA_FUNCTION_ACTIVE_IMAGES:
-    //         break;
-    //     case ITA_FUNCTION_PREPARE_RESPONSE:
-    //         break;
-    //     case ITA_FUNCTION_SYNCHRONIZE_RESPONSE:
-    //         break;
-    //     case ITA_FUNCTION_TRANSFER_RESPONSE:
-    //         break;
-    //     case ITA_FUNCTION_COMPLETION_RESPONSE:
-    //         break;
-    //     case ITA_FUNCTION_STATE_RESPONSE:
-    //         break;
-    //     case ITA_FUNCTION_VALIDATE_RESPONSE:
-    //         break;
-    //     case ITA_FUNCTION_ACTIVATE_RESPONSE:
-    //         break;
-    //     case ITA_FUNCTION_TERMINATE_RESPONSE:
-    //         break;
-    //     case ITA_FUNCTION_ACTIVE_IMAGES_RESPONSE:
-    //         break;
-    //     default:
-    //         break;
-    // }
-
-    proto_tree_add_item(tree, hf_mbus_ita_segment_sub_function_field, tvb, offset, 1, ENC_NA);
-    offset += 1;
-
-    proto_tree_add_item(tree, hf_mbus_ita_segment_payload, tvb, offset, tvb_reported_length_remaining(tvb, offset), ENC_NA);
-
-    col_append_sep_fstr(pinfo->cinfo, COL_INFO, NULL, "Image transfer, %s", val_to_str_const(function_field, mbus_ita_function_field_names, "Unknown Cmd"));
+    offset = 0;
+    while (tvb_reported_length_remaining(tvb, offset) > 0) {
+        uint16_t length = tvb_get_uint16(tvb, offset, ENC_LITTLE_ENDIAN);
+        proto_tree *segment_tree = proto_tree_add_subtree_format(tree, tvb, offset, length + 2,
+                                                                ett_mbus_ita_segment, NULL,
+                                                                "Image transfer segment %u: %s",
+                                                                tvb_get_uint8(tvb, offset + 2),
+                                                                val_to_str_const(tvb_get_uint8(tvb, offset + 3),
+                                                                                 mbus_ita_function_field_names, "Unknown Cmd"));
+        proto_tree_add_item(segment_tree, hf_mbus_ita_segment_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        tvbuff_t *segment_tvb = tvb_new_subset_length(tvb, offset + 2, length);
+        dissect_mbus_ita_segment(segment_tvb, pinfo, segment_tree);
+        offset += length + 2;
+    }
 }
 
 static int dissect_mbus_apl_helper(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, mbus_packet_info_t* mbus_info)
@@ -979,6 +1356,144 @@ void proto_register_mbus_apl(void)
               0x00, NULL, HFILL } },
         { &hf_mbus_ita_segment_payload,
             { "Payload", "mbus.apl.ita.segment.payload", FT_BYTES, BASE_NONE, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ita_prepare_info,
+            { "Additional information present", "mbus.apl.ita.prepare.info", FT_BOOLEAN, 8, NULL,
+              0x20, NULL, HFILL } },
+        { &hf_mbus_ita_prepare_multicast,
+            { "Multicast", "mbus.apl.ita.prepare.multicast", FT_BOOLEAN, 8, NULL,
+              0x10, NULL, HFILL } },
+        { &hf_mbus_ita_prepare_identity,
+            { "Image identifier present", "mbus.apl.ita.prepare.identity", FT_BOOLEAN, 8, NULL,
+              0x08, NULL, HFILL } },
+        { &hf_mbus_ita_prepare_size,
+            { "Size information present", "mbus.apl.ita.prepare.size", FT_BOOLEAN, 8, NULL,
+              0x04, NULL, HFILL } },
+        { &hf_mbus_ita_prepare_absolute,
+            { "Absolute date and time", "mbus.apl.ita.prepare.absolute", FT_BOOLEAN, 8, NULL,
+              0x02, NULL, HFILL } },
+        { &hf_mbus_ita_prepare_mac,
+            { "MAC present", "mbus.apl.ita.prepare.mac", FT_BOOLEAN, 8, NULL,
+              0x01, NULL, HFILL } },
+        { &hf_mbus_ita_prepare_response_info,
+            { "Additional information present", "mbus.apl.ita.prepare_response.info", FT_BOOLEAN, 8, NULL,
+              0x01, NULL, HFILL } },
+        { &hf_mbus_ita_prepare_response_multicast,
+            { "Multicast supported", "mbus.apl.ita.prepare_response.multicast", FT_BOOLEAN, 8, NULL,
+              0x10, NULL, HFILL } },
+        { &hf_mbus_ita_prepare_response_identity,
+            { "Image identifier present", "mbus.apl.ita.prepare_response.identity", FT_BOOLEAN, 8, NULL,
+              0x08, NULL, HFILL } },
+        { &hf_mbus_ita_prepare_response_not_ready,
+            { "Readiness", "mbus.apl.ita.prepare_response.not_ready", FT_BOOLEAN, 8, TFS(&mbus_ita_not_ready),
+              0x04, NULL, HFILL } },
+        { &hf_mbus_ita_prepare_response_size,
+            { "Alternative size information present", "mbus.apl.ita.prepare_response.size", FT_BOOLEAN, 8, NULL,
+              0x02, NULL, HFILL } },
+        { &hf_mbus_ita_preparation_result,
+            { "Preparation result", "mbus.apl.ita.preparation_result", FT_UINT8, BASE_HEX, VALS(mbus_ita_preparation_result_names),
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ita_transfer_remaining,
+            { "Remaining count present", "mbus.apl.ita.transfer.remaining", FT_BOOLEAN, 8, NULL,
+              0x10, NULL, HFILL } },
+        { &hf_mbus_ita_transfer_identity,
+            { "Image identifier present", "mbus.apl.ita.transfer.identity", FT_BOOLEAN, 8, NULL,
+              0x08, NULL, HFILL } },
+        { &hf_mbus_ita_transfer_sequence,
+            { "Sequence", "mbus.apl.ita.transfer.sequence", FT_UINT8, BASE_DEC, VALS(mbus_ita_sequence_names),
+              0x06, NULL, HFILL } },
+        { &hf_mbus_ita_transfer_info,
+            { "Additional information present", "mbus.apl.ita.transfer.info", FT_BOOLEAN, 8, NULL,
+              0x01, NULL, HFILL } },
+        { &hf_mbus_ita_command_identity,
+            { "Image identifier present", "mbus.apl.ita.command.identity", FT_BOOLEAN, 8, NULL,
+              0x02, NULL, HFILL } },
+        { &hf_mbus_ita_command_info,
+            { "Additional information present", "mbus.apl.ita.command.info", FT_BOOLEAN, 8, NULL,
+              0x01, NULL, HFILL } },
+        { &hf_mbus_ita_activate_absolute,
+            { "Absolute activation time", "mbus.apl.ita.activate.absolute", FT_BOOLEAN, 8, NULL,
+              0x01, NULL, HFILL } },
+        { &hf_mbus_ita_response_identity,
+            { "Image identifier present", "mbus.apl.ita.response.identity", FT_BOOLEAN, 8, NULL,
+              0x10, NULL, HFILL } },
+        { &hf_mbus_ita_response_state,
+            { "Overall state", "mbus.apl.ita.response.state", FT_UINT8, BASE_DEC, VALS(mbus_ita_state_names),
+              0x0f, NULL, HFILL } },
+        { &hf_mbus_ita_completion_identity,
+            { "Image identifier present", "mbus.apl.ita.completion_response.identity", FT_BOOLEAN, 8, NULL,
+              0x08, NULL, HFILL } },
+        { &hf_mbus_ita_completion_total,
+            { "Total lost count present", "mbus.apl.ita.completion_response.total", FT_BOOLEAN, 8, NULL,
+              0x04, NULL, HFILL } },
+        { &hf_mbus_ita_completion_lost,
+            { "Lost block list present", "mbus.apl.ita.completion_response.lost", FT_BOOLEAN, 8, NULL,
+              0x02, NULL, HFILL } },
+        { &hf_mbus_ita_completion_none,
+            { "No blocks received", "mbus.apl.ita.completion_response.none", FT_BOOLEAN, 8, NULL,
+              0x01, NULL, HFILL } },
+        { &hf_mbus_ita_image_identifier,
+            { "Image identifier", "mbus.apl.ita.image_identifier", FT_BYTES, BASE_NONE, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ita_manufacturer,
+            { "Manufacturer", "mbus.apl.ita.manufacturer", FT_UINT16, BASE_CUSTOM, CF_FUNC(mbus_decode_manufacturer_id),
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ita_version,
+            { "Version", "mbus.apl.ita.version", FT_UINT8, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ita_device_type,
+            { "Device type", "mbus.apl.ita.device_type", FT_UINT8, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ita_manufacturer_image_id,
+            { "Manufacturer image ID", "mbus.apl.ita.manufacturer_image_id", FT_UINT32, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ita_block_count,
+            { "Total blocks", "mbus.apl.ita.block_count", FT_UINT16, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ita_block_size,
+            { "Block size (bytes)", "mbus.apl.ita.block_size", FT_UINT16, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ita_repetition,
+            { "Multicast repetitions", "mbus.apl.ita.repetition", FT_UINT8, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ita_date_time,
+            { "Date and time", "mbus.apl.ita.date_time", FT_ABSOLUTE_TIME, ABSOLUTE_TIME_UTC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ita_delay,
+            { "Delay (seconds)", "mbus.apl.ita.delay", FT_UINT32, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ita_pace,
+            { "Pace (seconds)", "mbus.apl.ita.pace", FT_UINT8, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ita_mac_algorithm,
+            { "MAC algorithm", "mbus.apl.ita.mac.algorithm", FT_UINT8, BASE_HEX, VALS(mbus_ita_mac_algorithm_names),
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ita_key_id,
+            { "Key ID", "mbus.apl.ita.mac.key_id", FT_UINT8, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ita_key_version,
+            { "Key version", "mbus.apl.ita.mac.key_version", FT_UINT8, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ita_mac_value,
+            { "MAC value", "mbus.apl.ita.mac.value", FT_BYTES, BASE_NONE, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ita_additional_info,
+            { "Additional information", "mbus.apl.ita.additional_info", FT_BYTES, BASE_NONE, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ita_block_number,
+            { "Block number", "mbus.apl.ita.block_number", FT_UINT16, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ita_remaining,
+            { "Remaining blocks", "mbus.apl.ita.remaining", FT_UINT16, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ita_image_block,
+            { "Image block", "mbus.apl.ita.image_block", FT_BYTES, BASE_NONE, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ita_total_lost,
+            { "Total lost blocks", "mbus.apl.ita.total_lost", FT_UINT16, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_mbus_ita_lost_block,
+            { "Lost block", "mbus.apl.ita.lost_block", FT_UINT16, BASE_DEC, NULL,
               0x00, NULL, HFILL } }
     };
 
@@ -989,6 +1504,9 @@ void proto_register_mbus_apl(void)
     ett[2] = &ett_mbus_dife;
     ett[3] = &ett_mbus_vif;
     ett[4] = &ett_mbus_vife;
+    ett[5] = &ett_mbus_ita_segment;
+    ett[6] = &ett_mbus_ita_sub_function;
+    ett[7] = &ett_mbus_ita_identity;
 
     size_t j = MBUS_NUM_INDIVIDUAL_ETT;
 
@@ -1000,6 +1518,17 @@ void proto_register_mbus_apl(void)
     proto_mbus_apl = proto_register_protocol("MBus APL", "MBus APL", MBUS_PROTOABBREV_APL);
     proto_register_field_array(proto_mbus_apl, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
+
+    static ei_register_info ei[] = {
+        { &ei_mbus_ita_length,
+            { "mbus.apl.ita.invalid_length", PI_MALFORMED, PI_ERROR, "Invalid image transfer segment length", EXPFILL } },
+        { &ei_mbus_ita_parameters,
+            { "mbus.apl.ita.invalid_parameters", PI_MALFORMED, PI_ERROR, "Incomplete image transfer parameters", EXPFILL } },
+        { &ei_mbus_ita_trailing,
+            { "mbus.apl.ita.trailing_data", PI_PROTOCOL, PI_WARN, "Unexpected image transfer parameter bytes", EXPFILL } }
+    };
+    expert_module_t *expert_mbus_apl = expert_register_protocol(proto_mbus_apl);
+    expert_register_field_array(expert_mbus_apl, ei, array_length(ei));
 
     /* Register dissector */
     mbus_apl_handle = register_dissector(MBUS_PROTOABBREV_APL, dissect_mbus_apl, proto_mbus_apl);
