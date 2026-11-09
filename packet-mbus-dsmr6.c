@@ -148,6 +148,12 @@ static int hf_dsmr6_read_attributes_response_number_of_attributes;
 static int hf_dsmr6_read_attributes_response_attribute_id;
 static int hf_dsmr6_read_attributes_response_status;
 static int hf_dsmr6_read_attributes_response_data_type;
+static int hf_dsmr6_write_attributes_number_of_attributes;
+static int hf_dsmr6_write_attributes_attribute_id;
+static int hf_dsmr6_write_attributes_data_type;
+static int hf_dsmr6_write_attributes_response_number_of_attributes;
+static int hf_dsmr6_write_attributes_response_attribute_id;
+static int hf_dsmr6_write_attributes_response_status;
 static int hf_dsmr6_attribute_hw_lr_version;
 static int hf_dsmr6_attribute_bootloader_lr_version;
 static int hf_dsmr6_attribute_lr_version;
@@ -187,6 +193,8 @@ static int ett_dsmr6_header;
 static int ett_dsmr6_payload;
 static int ett_dsmr6_billing_log_entries;
 static int ett_dsmr6_read_attributes_response_entries;
+static int ett_dsmr6_write_attributes_entries;
+static int ett_dsmr6_write_attributes_response_entries;
 
 static const unit_name_string dsmr6_units_liter = { "L", NULL };
 static const unit_name_string dsmr6_units_milliliter = { "mL", NULL };
@@ -305,6 +313,132 @@ static void dissect_read_attributes(tvbuff_t *tvb, packet_info *pinfo _U_, proto
     }
 }
 
+static void dissect_attribute_value(tvbuff_t *tvb, proto_tree *attribute_tree, int *offset, uint8_t attribute_id)
+{
+    int length = 0;
+    switch (attribute_id) {
+        case DSMR6_ATTRIBUTE_ID_HARDWARE_LR_VERSION:
+            proto_tree_add_item_ret_length(attribute_tree, hf_dsmr6_attribute_hw_lr_version, tvb, *offset, 1, ENC_NA, &length);
+            *offset += length;
+            break;
+        case DSMR6_ATTRIBUTE_ID_BOOTLOADER_LR_VERSION:
+            proto_tree_add_item_ret_length(attribute_tree, hf_dsmr6_attribute_bootloader_lr_version, tvb, *offset, 1, ENC_NA, &length);
+            *offset += length;
+            break;
+        case DSMR6_ATTRIBUTE_ID_LR_VERSION:
+            proto_tree_add_item_ret_length(attribute_tree, hf_dsmr6_attribute_lr_version, tvb, *offset, 1, ENC_NA, &length);
+            *offset += length;
+            break;
+        case DSMR6_ATTRIBUTE_ID_HARDWARE_NLR_VERSION:
+            proto_tree_add_item_ret_length(attribute_tree, hf_dsmr6_attribute_hw_nlr_version, tvb, *offset, 1, ENC_NA, &length);
+            *offset += length;
+            break;
+        case DSMR6_ATTRIBUTE_ID_BOOTLOADER_NLR_VERSION:
+            proto_tree_add_item_ret_length(attribute_tree, hf_dsmr6_attribute_bootloader_nlr_version, tvb, *offset, 1, ENC_NA, &length);
+            *offset += length;
+            break;
+        case DSMR6_ATTRIBUTE_ID_NLR_VERSION:
+            proto_tree_add_item_ret_length(attribute_tree, hf_dsmr6_attribute_nlr_version, tvb, *offset, 1, ENC_NA, &length);
+            *offset += length;
+            break;
+        case DSMR6_ATTRIBUTE_ID_COMMUNICATION_MODULE_VERSION:
+            proto_tree_add_item_ret_length(attribute_tree, hf_dsmr6_attribute_communication_module_version, tvb, *offset, 1, ENC_NA, &length);
+            *offset += length;
+            break;
+        case DSMR6_ATTRIBUTE_ID_ADMINISTRATIVE_STATUS:
+            proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_administrative_status, tvb, *offset, 1, ENC_NA);
+            *offset += 1;
+            break;
+        case DSMR6_ATTRIBUTE_ID_X0_STATUS:
+            proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_x0_status, tvb, *offset, 1, ENC_NA);
+            *offset += 1;
+            break;
+        case DSMR6_ATTRIBUTE_ID_TEST_MODE_STATUS:
+            proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_test_mode_status, tvb, *offset, 1, ENC_NA);
+            *offset += 1;
+            break;
+        case DSMR6_ATTRIBUTE_ID_TEST_MODE_DURATION:
+            proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_test_mode_duration, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+            *offset += 2;
+            break;
+        case DSMR6_ATTRIBUTE_ID_TEST_MODE_BACKLIGHT_DURATION:
+            proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_test_mode_backlight_duration, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+            *offset += 2;
+            break;
+        case DSMR6_ATTRIBUTE_ID_AVERAGE_COMPUTATION_USED:
+            proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_average_computation_used, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
+            *offset += 4;
+            break;
+        case DSMR6_ATTRIBUTE_ID_DATA_STORAGE_USED:
+            proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_data_storage_used, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
+            *offset += 4;
+            break;
+        case DSMR6_ATTRIBUTE_ID_MEMORY_USED:
+            proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_memory_used, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
+            *offset += 4;
+            break;
+        case DSMR6_ATTRIBUTE_ID_UPTIME:
+            proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_uptime, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
+            *offset += 4;
+            break;
+        case DSMR6_ATTRIBUTE_ID_BATTERY_DAYS_LEFT:
+            proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_battery_days_left, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
+            *offset += 4;
+            break;
+        case DSMR6_ATTRIBUTE_ID_AVERAGE_COMPUTATION_INTERVAL:
+            proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_average_computation_interval, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+            *offset += 2;
+            break;
+        case DSMR6_ATTRIBUTE_ID_AMBIENT_TEMPERATURE:
+            proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_ambient_temperature, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+            *offset += 2;
+            break;
+        case DSMR6_ATTRIBUTE_ID_GAS_TEMPERATURE:
+            proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_gas_temperature, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+            *offset += 2;
+            break;
+        case DSMR6_ATTRIBUTE_ID_GAS_FLOW:
+            proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_gas_flow, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+            *offset += 2;
+            break;
+        case DSMR6_ATTRIBUTE_ID_METER_INDEX_VALUE:
+            proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_meter_index_value, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
+            *offset += 4;
+            break;
+        case DSMR6_ATTRIBUTE_ID_BACKLIGHT_DURATION:
+            proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_backlight_duration, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+            *offset += 2;
+            break;
+        case DSMR6_ATTRIBUTE_ID_EQUIPMENT_IDENTIFIER:
+            proto_tree_add_item_ret_length(attribute_tree, hf_dsmr6_attribute_equipment_identifier, tvb, *offset, 1, ENC_NA, &length);
+            *offset += length;
+            break;
+        case DSMR6_ATTRIBUTE_ID_GATEWAY_EQUIPMENT_IDENTIFIER:
+            proto_tree_add_item_ret_length(attribute_tree, hf_dsmr6_attribute_gateway_equipment_identifier, tvb, *offset, 1, ENC_NA, &length);
+            *offset += length;
+            break;
+        case DSMR6_ATTRIBUTE_ID_EVENT_BYTE:
+            proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_event_byte, tvb, *offset, 1, ENC_NA);
+            *offset += 1;
+            break;
+        case DSMR6_ATTRIBUTE_ID_FREQUENT_ACCESS_CYCLE:
+            proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_frequent_access_cycle, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+            *offset += 2;
+            break;
+        case DSMR6_ATTRIBUTE_ID_ORPHAN_TIMEOUT_PERIOD:
+            proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_orphan_timeout_period, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+            *offset += 2;
+            break;
+        case DSMR6_ATTRIBUTE_ID_CERTIFICATE_EXPIRATION_WARNING:
+            proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_certificate_expiration_warning, tvb, *offset, 1, ENC_NA);
+            *offset += 1;
+            break;
+        default:
+            // Unknown attribute ID, skip the value based on data type
+            break;
+    }
+}
+
 static void dissect_read_attributes_response(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int* offset)
 {
     uint8_t number_of_attributes = tvb_get_uint8(tvb, *offset);
@@ -329,128 +463,44 @@ static void dissect_read_attributes_response(tvbuff_t *tvb, packet_info *pinfo _
         proto_tree_add_item(attribute_tree, hf_dsmr6_read_attributes_response_data_type, tvb, *offset, 1, ENC_NA);
         *offset += 1;
 
-        int length = 0;
-        switch (attribute_id) {
-            case DSMR6_ATTRIBUTE_ID_HARDWARE_LR_VERSION:
-                proto_tree_add_item_ret_length(attribute_tree, hf_dsmr6_attribute_hw_lr_version, tvb, *offset, 1, ENC_NA, &length);
-                *offset += length;
-                break;
-            case DSMR6_ATTRIBUTE_ID_BOOTLOADER_LR_VERSION:
-                proto_tree_add_item_ret_length(attribute_tree, hf_dsmr6_attribute_bootloader_lr_version, tvb, *offset, 1, ENC_NA, &length);
-                *offset += length;
-                break;
-            case DSMR6_ATTRIBUTE_ID_LR_VERSION:
-                proto_tree_add_item_ret_length(attribute_tree, hf_dsmr6_attribute_lr_version, tvb, *offset, 1, ENC_NA, &length);
-                *offset += length;
-                break;
-            case DSMR6_ATTRIBUTE_ID_HARDWARE_NLR_VERSION:
-                proto_tree_add_item_ret_length(attribute_tree, hf_dsmr6_attribute_hw_nlr_version, tvb, *offset, 1, ENC_NA, &length);
-                *offset += length;
-                break;
-            case DSMR6_ATTRIBUTE_ID_BOOTLOADER_NLR_VERSION:
-                proto_tree_add_item_ret_length(attribute_tree, hf_dsmr6_attribute_bootloader_nlr_version, tvb, *offset, 1, ENC_NA, &length);
-                *offset += length;
-                break;
-            case DSMR6_ATTRIBUTE_ID_NLR_VERSION:
-                proto_tree_add_item_ret_length(attribute_tree, hf_dsmr6_attribute_nlr_version, tvb, *offset, 1, ENC_NA, &length);
-                *offset += length;
-                break;
-            case DSMR6_ATTRIBUTE_ID_COMMUNICATION_MODULE_VERSION:
-                proto_tree_add_item_ret_length(attribute_tree, hf_dsmr6_attribute_communication_module_version, tvb, *offset, 1, ENC_NA, &length);
-                *offset += length;
-                break;
-            case DSMR6_ATTRIBUTE_ID_ADMINISTRATIVE_STATUS:
-                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_administrative_status, tvb, *offset, 1, ENC_NA);
-                *offset += 1;
-                break;
-            case DSMR6_ATTRIBUTE_ID_X0_STATUS:
-                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_x0_status, tvb, *offset, 1, ENC_NA);
-                *offset += 1;
-                break;
-            case DSMR6_ATTRIBUTE_ID_TEST_MODE_STATUS:
-                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_test_mode_status, tvb, *offset, 1, ENC_NA);
-                *offset += 1;
-                break;
-            case DSMR6_ATTRIBUTE_ID_TEST_MODE_DURATION:
-                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_test_mode_duration, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
-                *offset += 2;
-                break;
-            case DSMR6_ATTRIBUTE_ID_TEST_MODE_BACKLIGHT_DURATION:
-                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_test_mode_backlight_duration, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
-                *offset += 2;
-                break;
-            case DSMR6_ATTRIBUTE_ID_AVERAGE_COMPUTATION_USED:
-                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_average_computation_used, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
-                *offset += 4;
-                break;
-            case DSMR6_ATTRIBUTE_ID_DATA_STORAGE_USED:
-                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_data_storage_used, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
-                *offset += 4;
-                break;
-            case DSMR6_ATTRIBUTE_ID_MEMORY_USED:
-                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_memory_used, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
-                *offset += 4;
-                break;
-            case DSMR6_ATTRIBUTE_ID_UPTIME:
-                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_uptime, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
-                *offset += 4;
-                break;
-            case DSMR6_ATTRIBUTE_ID_BATTERY_DAYS_LEFT:
-                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_battery_days_left, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
-                *offset += 4;
-                break;
-            case DSMR6_ATTRIBUTE_ID_AVERAGE_COMPUTATION_INTERVAL:
-                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_average_computation_interval, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
-                *offset += 2;
-                break;
-            case DSMR6_ATTRIBUTE_ID_AMBIENT_TEMPERATURE:
-                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_ambient_temperature, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
-                *offset += 2;
-                break;
-            case DSMR6_ATTRIBUTE_ID_GAS_TEMPERATURE:
-                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_gas_temperature, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
-                *offset += 2;
-                break;
-            case DSMR6_ATTRIBUTE_ID_GAS_FLOW:
-                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_gas_flow, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
-                *offset += 2;
-                break;
-            case DSMR6_ATTRIBUTE_ID_METER_INDEX_VALUE:
-                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_meter_index_value, tvb, *offset, 4, ENC_LITTLE_ENDIAN);
-                *offset += 4;
-                break;
-            case DSMR6_ATTRIBUTE_ID_BACKLIGHT_DURATION:
-                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_backlight_duration, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
-                *offset += 2;
-                break;
-            case DSMR6_ATTRIBUTE_ID_EQUIPMENT_IDENTIFIER:
-                proto_tree_add_item_ret_length(attribute_tree, hf_dsmr6_attribute_equipment_identifier, tvb, *offset, 1, ENC_NA, &length);
-                *offset += length;
-                break;
-            case DSMR6_ATTRIBUTE_ID_GATEWAY_EQUIPMENT_IDENTIFIER:
-                proto_tree_add_item_ret_length(attribute_tree, hf_dsmr6_attribute_gateway_equipment_identifier, tvb, *offset, 1, ENC_NA, &length);
-                *offset += length;
-                break;
-            case DSMR6_ATTRIBUTE_ID_EVENT_BYTE:
-                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_event_byte, tvb, *offset, 1, ENC_NA);
-                *offset += 1;
-                break;
-            case DSMR6_ATTRIBUTE_ID_FREQUENT_ACCESS_CYCLE:
-                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_frequent_access_cycle, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
-                *offset += 2;
-                break;
-            case DSMR6_ATTRIBUTE_ID_ORPHAN_TIMEOUT_PERIOD:
-                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_orphan_timeout_period, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
-                *offset += 2;
-                break;
-            case DSMR6_ATTRIBUTE_ID_CERTIFICATE_EXPIRATION_WARNING:
-                proto_tree_add_item(attribute_tree, hf_dsmr6_attribute_certificate_expiration_warning, tvb, *offset, 1, ENC_NA);
-                *offset += 1;
-                break;
-            default:
-                // Unknown attribute ID, skip the value based on data type
-                break;
-        }
+        dissect_attribute_value(tvb, attribute_tree, offset, attribute_id);
+    }
+}
+
+static void dissect_write_attributes(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int* offset)
+{
+    uint8_t number_of_attributes = tvb_get_uint8(tvb, *offset);
+    proto_tree_add_item(tree, hf_dsmr6_write_attributes_number_of_attributes, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+
+    for (size_t i = 0; i < number_of_attributes; i++) {
+        proto_tree* record_tree = proto_tree_add_subtree_format(tree, tvb, *offset, 0, ett_dsmr6_write_attributes_entries, NULL, "Write Attribute Record %zu", i + 1);
+
+        uint8_t attribute_id = tvb_get_uint8(tvb, *offset);
+        proto_tree_add_item(record_tree, hf_dsmr6_write_attributes_attribute_id, tvb, *offset, 1, ENC_NA);
+        *offset += 1;
+
+        proto_tree_add_item(record_tree, hf_dsmr6_write_attributes_data_type, tvb, *offset, 1, ENC_NA);
+        *offset += 1;
+
+        dissect_attribute_value(tvb, record_tree, offset, attribute_id);
+    }
+}
+
+static void dissect_write_attributes_response(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int* offset)
+{
+    uint8_t number_of_attributes = tvb_get_uint8(tvb, *offset);
+    proto_tree_add_item(tree, hf_dsmr6_write_attributes_response_number_of_attributes, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+
+    for (size_t i = 0; i < number_of_attributes; i++) {
+        proto_tree* record_tree = proto_tree_add_subtree_format(tree, tvb, *offset, 0, ett_dsmr6_write_attributes_response_entries, NULL, "Write Attribute Status Record %zu", i + 1);
+
+        proto_tree_add_item(record_tree, hf_dsmr6_write_attributes_response_attribute_id, tvb, *offset, 1, ENC_NA);
+        *offset += 1;
+
+        proto_tree_add_item(record_tree, hf_dsmr6_write_attributes_response_status, tvb, *offset, 1, ENC_NA);
+        *offset += 1;
     }
 }
 
@@ -554,6 +604,12 @@ dissect_dsmr6(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
             case DSMR6_MESSAGE_CODE_READ_ATTRIBUTES_RESPONSE:
                 dissect_read_attributes_response(tvb, pinfo, payload_tree, &offset);
                 break;
+            case DSMR6_MESSAGE_CODE_WRITE_ATTRIBUTES:
+                dissect_write_attributes(tvb, pinfo, payload_tree, &offset);
+                break;
+            case DSMR6_MESSAGE_CODE_WRITE_ATTRIBUTES_RESPONSE:
+                dissect_write_attributes_response(tvb, pinfo, payload_tree, &offset);
+                break;
             case DSMR6_MESSAGE_CODE_PUSH_TEST_MODE:
                 dissect_push_test_mode(tvb, pinfo, payload_tree, &offset);
                 break;
@@ -655,6 +711,24 @@ proto_register_dsmr6(void)
               0x00, NULL, HFILL } },
         { &hf_dsmr6_read_attributes_response_data_type,
             { "Attribute Data Type", "dsmr6.read_attributes_response.data_type", FT_UINT8, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_write_attributes_number_of_attributes,
+            { "Number of Attributes", "dsmr6.write_attributes.number_of_attributes", FT_UINT8, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_write_attributes_attribute_id,
+            { "Attribute ID", "dsmr6.write_attributes.attribute_id", FT_UINT8, BASE_DEC | BASE_EXT_STRING, &dsmr6_attribute_names_ext,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_write_attributes_data_type,
+            { "Attribute Data Type", "dsmr6.write_attributes.data_type", FT_UINT8, BASE_HEX, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_write_attributes_response_number_of_attributes,
+            { "Number of Attributes", "dsmr6.write_attributes_response.number_of_attributes", FT_UINT8, BASE_DEC, NULL,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_write_attributes_response_attribute_id,
+            { "Attribute ID", "dsmr6.write_attributes_response.attribute_id", FT_UINT8, BASE_DEC | BASE_EXT_STRING, &dsmr6_attribute_names_ext,
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_write_attributes_response_status,
+            { "Attribute Status", "dsmr6.write_attributes_response.status", FT_UINT8, BASE_HEX | BASE_EXT_STRING, &dsmr6_status_names_ext,
               0x00, NULL, HFILL } },
         { &hf_dsmr6_attribute_hw_lr_version,
             { "Hardware LR Version", "dsmr6.read_attributes_response.attr_hw_lr_version", FT_UINT_STRING, BASE_NONE, NULL,
@@ -764,6 +838,8 @@ proto_register_dsmr6(void)
         &ett_dsmr6_payload,
         &ett_dsmr6_billing_log_entries,
         &ett_dsmr6_read_attributes_response_entries,
+        &ett_dsmr6_write_attributes_entries,
+        &ett_dsmr6_write_attributes_response_entries,
     };
 
     proto_dsmr6 = proto_register_protocol("DSMR6", "DSMR6", "dsmr6");
