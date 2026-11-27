@@ -49,7 +49,10 @@ static value_string_ext dsmr6_protocol_id_names_ext = VALUE_STRING_EXT_INIT(dsmr
     XXX(DSMR6_MESSAGE_CODE_READ_ATTRIBUTES_RESPONSE,              71, "Read Attributes Response") \
     XXX(DSMR6_MESSAGE_CODE_WRITE_ATTRIBUTES,                      80, "Write Attributes") \
     XXX(DSMR6_MESSAGE_CODE_WRITE_ATTRIBUTES_RESPONSE,             81, "Write Attributes Response") \
-    XXX(DSMR6_MESSAGE_CODE_PUSH_TEST_MODE,                        110, "Push Test Mode")
+    XXX(DSMR6_MESSAGE_CODE_PUSH_TEST_MODE,                        110, "Push Test Mode") \
+    XXX(DSMR6_MESSAGE_CODE_GENERATE_CSR,                          120, "Generate CSR") \
+    XXX(DSMR6_MESSAGE_CODE_READ_CSR,                              121, "Read CSR") \
+    XXX(DSMR6_MESSAGE_CODE_READ_CSR_RESPONSE,                     122, "Read CSR Response")
 
 VALUE_STRING_ENUM(dsmr6_message_codes);
 VALUE_STRING_ARRAY(dsmr6_message_codes);
@@ -68,6 +71,12 @@ static value_string_ext dsmr6_message_codes_ext = VALUE_STRING_EXT_INIT(dsmr6_me
 VALUE_STRING_ENUM(dsmr6_status_names);
 VALUE_STRING_ARRAY(dsmr6_status_names);
 static value_string_ext dsmr6_status_names_ext = VALUE_STRING_EXT_INIT(dsmr6_status_names);
+
+static const value_string dsmr6_certificate_types[] = {
+    { 0, "Signing" },
+    { 1, "DTLS" },
+    { 0, NULL }
+};
 
 #define dsmr6_attribute_names_VALUE_STRING_LIST(XXX) \
     XXX(DSMR6_ATTRIBUTE_ID_HARDWARE_LR_VERSION,             1, "Hardware LR Version") \
@@ -115,6 +124,7 @@ void proto_reg_handoff_dsmr6(void);
 /*************************/
 /* Dissector Handles. */
 static dissector_handle_t dsmr6_handle;
+static dissector_handle_t pkcs10_handle;
 
 /* Initialize the protocol and registered fields */
 static int proto_dsmr6;
@@ -187,6 +197,9 @@ static int hf_dsmr6_push_test_mode_volume_milliliters;
 static int hf_dsmr6_push_test_mode_gas_flow;
 static int hf_dsmr6_push_test_mode_gas_temperature;
 static int hf_dsmr6_push_test_mode_measurement_status;
+static int hf_dsmr6_generate_csr_certificate_type;
+static int hf_dsmr6_read_csr_certificate_type;
+static int hf_dsmr6_read_csr_response_csr;
 
 static int ett_dsmr6;
 static int ett_dsmr6_header;
@@ -195,6 +208,7 @@ static int ett_dsmr6_billing_log_entries;
 static int ett_dsmr6_read_attributes_response_entries;
 static int ett_dsmr6_write_attributes_entries;
 static int ett_dsmr6_write_attributes_response_entries;
+static int ett_dsmr6_csr;
 
 static const unit_name_string dsmr6_units_liter = { "L", NULL };
 static const unit_name_string dsmr6_units_milliliter = { "mL", NULL };
@@ -518,6 +532,27 @@ static void dissect_push_test_mode(tvbuff_t *tvb, packet_info *pinfo _U_, proto_
     *offset += 1;
 }
 
+static void dissect_generate_csr(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int *offset)
+{
+    proto_tree_add_item(tree, hf_dsmr6_generate_csr_certificate_type, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+}
+
+static void dissect_read_csr(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int *offset)
+{
+    proto_tree_add_item(tree, hf_dsmr6_read_csr_certificate_type, tvb, *offset, 1, ENC_NA);
+    *offset += 1;
+}
+
+static void dissect_read_csr_response(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int *offset, uint16_t csr_length)
+{
+    proto_item *csr_item = proto_tree_add_item(tree, hf_dsmr6_read_csr_response_csr, tvb, *offset, csr_length, ENC_NA);
+    proto_tree *csr_tree = proto_item_add_subtree(csr_item, ett_dsmr6_csr);
+    tvbuff_t *csr_tvb = tvb_new_subset_length(tvb, *offset, csr_length);
+    call_dissector(pkcs10_handle, csr_tvb, pinfo, csr_tree);
+    *offset += csr_length;
+}
+
 static bool check_dsmr6_command(tvbuff_t *tvb)
 {
     int offset = 0;
@@ -562,6 +597,7 @@ dissect_dsmr6(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
     proto_tree_add_item(header_tree, hf_dsmr6_message_code, tvb, offset, 1, ENC_NA);
     offset += 1;
 
+    uint16_t message_length = tvb_get_letohs(tvb, offset);
     proto_tree_add_item(header_tree, hf_dsmr6_message_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
     offset += 2;
 
@@ -612,6 +648,15 @@ dissect_dsmr6(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
                 break;
             case DSMR6_MESSAGE_CODE_PUSH_TEST_MODE:
                 dissect_push_test_mode(tvb, pinfo, payload_tree, &offset);
+                break;
+            case DSMR6_MESSAGE_CODE_GENERATE_CSR:
+                dissect_generate_csr(tvb, pinfo, payload_tree, &offset);
+                break;
+            case DSMR6_MESSAGE_CODE_READ_CSR:
+                dissect_read_csr(tvb, pinfo, payload_tree, &offset);
+                break;
+            case DSMR6_MESSAGE_CODE_READ_CSR_RESPONSE:
+                dissect_read_csr_response(tvb, pinfo, payload_tree, &offset, message_length);
                 break;
             default:
                 break;
@@ -829,6 +874,15 @@ proto_register_dsmr6(void)
         { &hf_dsmr6_push_test_mode_measurement_status,
             { "Measurement Status", "dsmr6.push_test_mode.measurement_status", FT_UINT8, BASE_DEC, NULL,
               0x00, NULL, HFILL } },
+        { &hf_dsmr6_generate_csr_certificate_type,
+            { "Certificate Type", "dsmr6.generate_csr.certificate_type", FT_UINT8, BASE_DEC, VALS(dsmr6_certificate_types),
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_read_csr_certificate_type,
+            { "Certificate Type", "dsmr6.read_csr.certificate_type", FT_UINT8, BASE_DEC, VALS(dsmr6_certificate_types),
+              0x00, NULL, HFILL } },
+        { &hf_dsmr6_read_csr_response_csr,
+            { "Certificate Signing Request", "dsmr6.read_csr_response.csr", FT_BYTES, BASE_NONE, NULL,
+              0x00, NULL, HFILL } },
     };
 
     /* MBus subtrees */
@@ -840,6 +894,7 @@ proto_register_dsmr6(void)
         &ett_dsmr6_read_attributes_response_entries,
         &ett_dsmr6_write_attributes_entries,
         &ett_dsmr6_write_attributes_response_entries,
+        &ett_dsmr6_csr,
     };
 
     proto_dsmr6 = proto_register_protocol("DSMR6", "DSMR6", "dsmr6");
@@ -863,6 +918,7 @@ dissect_dsmr6_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *da
 void
 proto_reg_handoff_dsmr6(void)
 {
+    pkcs10_handle = find_dissector_add_dependency("pkcs10", proto_dsmr6);
     heur_dissector_add("dtls", dissect_dsmr6_heur, "DSMR6 over DTLS", "dsmr6_dtls", proto_dsmr6, HEURISTIC_ENABLE);
     heur_dissector_add("mbus", dissect_dsmr6_heur, "DSMR6 over MBus", "dsmr6_mbus", proto_dsmr6, HEURISTIC_ENABLE);
 }
